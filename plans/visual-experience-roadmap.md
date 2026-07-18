@@ -1,6 +1,6 @@
 # Focus Space visual experience roadmap
 
-Status: proposed
+Status: Milestones 0 and 1 complete; Milestone 2 proposed
 
 North star: the polished Focus Space concept supplied on 18 July 2026
 
@@ -25,6 +25,8 @@ The everyday workspace should feel spacious and quiet. Legends, diagrams, depth 
 
 ## Milestone 0 — Preserve the visual contract
 
+Status: complete on 18 July 2026
+
 Goal: make the intended direction durable and measurable before changing the renderer.
 
 - Add the supplied north-star image to a repository-owned `docs/reference` location once its redistribution status is confirmed.
@@ -40,6 +42,8 @@ Definition of done:
 - Current and target screenshots can be compared at the same window size.
 
 ## Milestone 1 — Build the spatial atmosphere
+
+Status: complete on 18 July 2026
 
 Goal: make an empty Focus Space feel like the concept before polishing individual nodes.
 

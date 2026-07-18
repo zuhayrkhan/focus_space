@@ -17,6 +17,14 @@ To create a launchable, ad-hoc signed app bundle:
 open ".build/Focus Space.app"
 ```
 
+Launch a deterministic experience-review scene without touching personal autosave data:
+
+```sh
+open ".build/Focus Space.app" --args --demo north-star
+```
+
+Available demo slugs are `north-star`, `shallow`, `deep`, `dense`, `parked`, and `empty`.
+
 The first launch creates a small example map. Changes autosave as readable JSON in
 `~/Library/Application Support/Focus Space/focus-space.json`.
 
@@ -29,3 +37,9 @@ The first launch creates a small example map. Changes autosave as readable JSON 
 - `UI`: the native SwiftUI shell and direct-manipulation interactions
 
 RealityKit types do not cross into the domain or application layers.
+
+## Visual roadmap
+
+- [Visual experience roadmap](plans/visual-experience-roadmap.md)
+- [Milestone 1 spatial atmosphere](docs/milestone-1-spatial-atmosphere.md)
+- [Visual north star](docs/reference/focus-space-visual-north-star.png)

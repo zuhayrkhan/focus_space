@@ -3,6 +3,7 @@ import SwiftUI
 
 struct FocusRealityView: View {
     @ObservedObject var store: FocusSpaceStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var renderer = RealityFocusRenderer()
     @State private var dragOrigins: [UUID: SpatialPoint] = [:]
 
@@ -13,6 +14,7 @@ struct FocusRealityView: View {
             guard let root = content.entities.first?.findEntity(named: RealityFocusRenderer.rootName)
                 ?? content.entities.first(where: { $0.name == RealityFocusRenderer.rootName }) else { return }
             renderer.reconcile(root: root, snapshot: store.sceneSnapshot)
+            renderer.updateAmbient(root: root, reduceMotion: reduceMotion)
         }
         .gesture(selectionGesture)
         .simultaneousGesture(renameGesture)
@@ -91,14 +93,22 @@ struct FocusRealityView: View {
 }
 
 private struct WorkspaceBackground: View {
+    private let tokens = FocusVisualTokens.midnight
+
     var body: some View {
         ZStack {
-            Color(red: 0.035, green: 0.045, blue: 0.07)
+            tokens.canvasDeep.color
             RadialGradient(
-                colors: [Color.blue.opacity(0.18), .clear],
-                center: .top,
+                colors: [tokens.canvasMid.color.opacity(0.92), tokens.canvasDeep.color.opacity(0.2), .clear],
+                center: UnitPoint(x: 0.5, y: 0.12),
+                startRadius: 12,
+                endRadius: 680
+            )
+            RadialGradient(
+                colors: [tokens.focusBlue.color.opacity(0.09), .clear],
+                center: UnitPoint(x: 0.5, y: 0.58),
                 startRadius: 20,
-                endRadius: 620
+                endRadius: 520
             )
         }
         .ignoresSafeArea()

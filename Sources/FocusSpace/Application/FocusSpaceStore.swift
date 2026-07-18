@@ -16,6 +16,7 @@ final class FocusSpaceStore: ObservableObject {
     @Published var searchText = ""
     @Published var isSearching = false
     @Published var editingNodeID: UUID?
+    @Published private(set) var demoScene: DemoScene?
     @Published private(set) var persistenceMessage: String?
 
     private let repository: any FocusMapRepository
@@ -23,6 +24,7 @@ final class FocusSpaceStore: ObservableObject {
     private var redoMaps: [FocusMap] = []
     private var isInteracting = false
     private var saveTask: Task<Void, Never>?
+    private var personalMapBeforeDemo: FocusMap?
 
     init(repository: any FocusMapRepository = JSONFocusMapRepository()) {
         self.repository = repository
@@ -40,6 +42,7 @@ final class FocusSpaceStore: ObservableObject {
 
     var canUndo: Bool { !undoMaps.isEmpty }
     var canRedo: Bool { !redoMaps.isEmpty }
+    var isPreviewingDemo: Bool { demoScene != nil }
 
     var sceneSnapshot: FocusSceneSnapshot {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -65,6 +68,22 @@ final class FocusSpaceStore: ObservableObject {
 
     func select(_ id: UUID?) {
         withAnimationIntent { selection = id }
+    }
+
+    func preview(_ scene: DemoScene?) {
+        if let scene {
+            if personalMapBeforeDemo == nil { personalMapBeforeDemo = map }
+            demoScene = scene
+            map = scene.map
+        } else if let personalMapBeforeDemo {
+            demoScene = nil
+            map = personalMapBeforeDemo
+            self.personalMapBeforeDemo = nil
+        }
+        selection = nil
+        editingNodeID = nil
+        undoMaps.removeAll()
+        redoMaps.removeAll()
     }
 
     func beginRenaming(_ id: UUID) {
@@ -182,6 +201,7 @@ final class FocusSpaceStore: ObservableObject {
     }
 
     private func scheduleSave() {
+        guard demoScene == nil else { return }
         saveTask?.cancel()
         let repository = repository
         let map = map

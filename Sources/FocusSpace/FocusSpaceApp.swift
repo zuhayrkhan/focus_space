@@ -2,7 +2,18 @@ import SwiftUI
 
 @main
 struct FocusSpaceApp: App {
-    @StateObject private var store = FocusSpaceStore()
+    @StateObject private var store: FocusSpaceStore
+
+    init() {
+        let store = FocusSpaceStore()
+        let arguments = CommandLine.arguments
+        if let flagIndex = arguments.firstIndex(of: "--demo"),
+           arguments.indices.contains(flagIndex + 1),
+           let scene = DemoScene(slug: arguments[flagIndex + 1]) {
+            store.preview(scene)
+        }
+        _store = StateObject(wrappedValue: store)
+    }
 
     var body: some Scene {
         WindowGroup {

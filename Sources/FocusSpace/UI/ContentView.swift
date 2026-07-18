@@ -54,6 +54,32 @@ struct ContentView: View {
                 .buttonStyle(.plain)
             }
             Spacer()
+            Menu {
+                Button("Personal space") { store.preview(nil) }
+                Divider()
+                ForEach(DemoScene.allCases) { scene in
+                    Button {
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.86)) {
+                            store.preview(scene)
+                        }
+                    } label: {
+                        if store.demoScene == scene {
+                            Label(scene.rawValue, systemImage: "checkmark")
+                        } else {
+                            Text(scene.rawValue)
+                        }
+                    }
+                }
+            } label: {
+                Label(
+                    store.demoScene?.rawValue ?? "Experience previews",
+                    systemImage: "sparkles.rectangle.stack"
+                )
+                .font(.caption)
+                .lineLimit(2)
+            }
+            .menuStyle(.borderlessButton)
+            .padding(.horizontal, 12)
             Text("Depth is attention")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
