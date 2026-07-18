@@ -1,0 +1,31 @@
+# Focus Space
+
+Focus Space is a native macOS spatial workspace where depth represents attention.
+
+## Run
+
+Open `Package.swift` in Xcode and run the `FocusSpace` scheme, or use:
+
+```sh
+swift run FocusSpace
+```
+
+To create a launchable, ad-hoc signed app bundle:
+
+```sh
+./Scripts/package-app.sh
+open ".build/Focus Space.app"
+```
+
+The first launch creates a small example map. Changes autosave as readable JSON in
+`~/Library/Application Support/Focus Space/focus-space.json`.
+
+## Architecture
+
+- `Domain`: renderer-independent focus map and attention semantics
+- `Application`: user intents, selection, command history and autosave orchestration
+- `Rendering`: a RealityKit adapter that consumes immutable scene snapshots
+- `Persistence`: a replaceable JSON repository
+- `UI`: the native SwiftUI shell and direct-manipulation interactions
+
+RealityKit types do not cross into the domain or application layers.
