@@ -1,7 +1,17 @@
+import AppKit
 import SwiftUI
+
+final class FocusSpaceAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        guard let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+              let icon = NSImage(contentsOf: iconURL) else { return }
+        NSApplication.shared.applicationIconImage = icon
+    }
+}
 
 @main
 struct FocusSpaceApp: App {
+    @NSApplicationDelegateAdaptor(FocusSpaceAppDelegate.self) private var appDelegate
     @StateObject private var store: FocusSpaceStore
 
     init() {
