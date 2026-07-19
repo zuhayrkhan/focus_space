@@ -1,6 +1,6 @@
 # Focus Space visual experience roadmap
 
-Status: Milestones 0, 1, and 2 complete; Milestone 3 proposed
+Status: Milestones 0–4 complete; Milestone 5 proposed
 
 North star: the polished Focus Space concept supplied on 18 July 2026
 
@@ -86,6 +86,8 @@ Definition of done:
 
 ## Milestone 3 — Make relationships feel spatial
 
+Status: complete on 19 July 2026
+
 Goal: turn the current straight connectors into a coherent living structure.
 
 - Render curved, softly illuminated parent-child paths.
@@ -102,6 +104,8 @@ Definition of done:
 - Dense demo scenes remain navigable.
 
 ## Milestone 4 — Camera and navigation
+
+Status: complete on 19 July 2026
 
 Goal: deliver the pan, orbit, zoom, frame-selected, and reset interactions promised by the vision pack.
 

@@ -52,4 +52,17 @@ struct FocusMap: Codable, Equatable, Sendable {
         }
         return result
     }
+
+    func ancestors(of id: UUID) -> [UUID] {
+        var result: [UUID] = []
+        var visited: Set<UUID> = [id]
+        var parentID = node(id: id)?.parentID
+        while let currentID = parentID,
+              visited.insert(currentID).inserted,
+              let parent = node(id: currentID) {
+            result.append(currentID)
+            parentID = parent.parentID
+        }
+        return result
+    }
 }

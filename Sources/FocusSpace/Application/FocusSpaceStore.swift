@@ -16,6 +16,8 @@ final class FocusSpaceStore: ObservableObject {
     @Published var searchText = ""
     @Published var isSearching = false
     @Published var editingNodeID: UUID?
+    @Published private(set) var hoveredNodeID: UUID?
+    @Published private(set) var cameraIntent: FocusCameraIntent = .canonical
     @Published private(set) var demoScene: DemoScene?
     @Published private(set) var persistenceMessage: String?
 
@@ -43,9 +45,13 @@ final class FocusSpaceStore: ObservableObject {
     var canUndo: Bool { !undoMaps.isEmpty }
     var canRedo: Bool { !redoMaps.isEmpty }
     var isPreviewingDemo: Bool { demoScene != nil }
+    var canFrameSelection: Bool { selection != nil }
 
     var sceneSnapshot: FocusSceneSnapshot {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let contextID = hoveredNodeID ?? selection
+        let contextIDs = contextID.map(contextNodeIDs(around:)) ?? []
+        let ancestryIDs = Set(contextID.map(map.ancestors(of:)) ?? [])
         let items = map.nodes.map { node in
             let includedByFilter: Bool = switch filter {
             case .today: node.attention >= 0.42
@@ -64,14 +70,98 @@ final class FocusSpaceStore: ObservableObject {
                 urgency: node.urgency,
                 isEnabled: node.isEnabled,
                 isSelected: selection == node.id,
-                isDimmed: !includedByFilter || !includedBySearch
+                isDimmed: !includedByFilter || !includedBySearch,
+                isHovered: hoveredNodeID == node.id,
+                contextRole: contextRole(
+                    for: node.id,
+                    contextID: contextID,
+                    contextIDs: contextIDs,
+                    ancestryIDs: ancestryIDs
+                )
             )
         }
-        return FocusSceneSnapshot(items: items)
+        return FocusSceneSnapshot(
+            items: items,
+            relationships: relationships(
+                items: items,
+                contextID: contextID,
+                contextIDs: contextIDs,
+                ancestryIDs: ancestryIDs
+            )
+        )
     }
 
     func select(_ id: UUID?) {
         withAnimationIntent { selection = id }
+    }
+
+    func setCameraPose(_ pose: FocusCameraIntent.Pose, animated: Bool = false) {
+        cameraIntent = FocusCameraIntent(
+            pose: pose.bounded(),
+            mode: .free,
+            revision: cameraIntent.revision + 1,
+            isAnimated: animated
+        )
+    }
+
+    func panCamera(horizontal: Double, vertical: Double, from origin: FocusCameraIntent.Pose? = nil) {
+        var pose = origin ?? cameraIntent.pose
+        let scale = pose.distance / 520
+        pose.target.x -= horizontal * scale
+        pose.target.y += vertical * scale
+        setCameraPose(pose)
+    }
+
+    func orbitCamera(horizontal: Double, vertical: Double, from origin: FocusCameraIntent.Pose? = nil) {
+        var pose = origin ?? cameraIntent.pose
+        pose.yaw += horizontal * 0.16
+        pose.pitch -= vertical * 0.13
+        setCameraPose(pose)
+    }
+
+    func zoomCamera(by factor: Double, from origin: FocusCameraIntent.Pose? = nil, animated: Bool = false) {
+        var pose = origin ?? cameraIntent.pose
+        pose.distance /= min(max(factor, 0.25), 4)
+        setCameraPose(pose, animated: animated)
+    }
+
+    func frameSelection() {
+        guard let selection, let selected = map.node(id: selection) else { return }
+        let ids = map.descendants(of: selection).union([selection])
+        let nodes = map.nodes.filter { ids.contains($0.id) }
+        let minX = nodes.map(\.position.x).min() ?? selected.position.x
+        let maxX = nodes.map(\.position.x).max() ?? selected.position.x
+        let minY = nodes.map(\.position.y).min() ?? selected.position.y
+        let maxY = nodes.map(\.position.y).max() ?? selected.position.y
+        let attention = nodes.map(\.attention).reduce(0, +) / Double(max(nodes.count, 1))
+        let span = max(maxX - minX, (maxY - minY) * 1.6)
+        let pose = FocusCameraIntent.Pose(
+            target: SpatialPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2),
+            targetAttention: attention,
+            yaw: 0,
+            pitch: 0,
+            distance: min(max(5.4 + span * 0.72, 5.4), 12.5)
+        ).bounded()
+        cameraIntent = FocusCameraIntent(
+            pose: pose,
+            mode: .framed(selection),
+            revision: cameraIntent.revision + 1,
+            isAnimated: true
+        )
+    }
+
+    func resetCamera(animated: Bool = true) {
+        cameraIntent = FocusCameraIntent(
+            pose: .canonical,
+            mode: .canonical,
+            revision: cameraIntent.revision + 1,
+            isAnimated: animated
+        )
+    }
+
+    func hover(_ id: UUID?) {
+        guard hoveredNodeID != id else { return }
+        hoveredNodeID = id
     }
 
     func preview(_ scene: DemoScene?) {
@@ -85,6 +175,8 @@ final class FocusSpaceStore: ObservableObject {
             self.personalMapBeforeDemo = nil
         }
         selection = nil
+        hoveredNodeID = nil
+        resetCamera(animated: true)
         editingNodeID = nil
         undoMaps.removeAll()
         redoMaps.removeAll()
@@ -262,6 +354,106 @@ final class FocusSpaceStore: ObservableObject {
             parentID = parent.parentID
         }
         return depth
+    }
+
+    private func contextNodeIDs(around id: UUID) -> Set<UUID> {
+        var result = map.descendants(of: id)
+        result.formUnion(map.ancestors(of: id))
+        result.insert(id)
+        if let parentID = map.node(id: id)?.parentID {
+            result.formUnion(map.nodes.lazy.filter { $0.parentID == parentID }.map(\.id))
+        }
+        return result
+    }
+
+    private func contextRole(
+        for id: UUID,
+        contextID: UUID?,
+        contextIDs: Set<UUID>,
+        ancestryIDs: Set<UUID>
+    ) -> FocusSceneSnapshot.ContextRole {
+        guard let contextID else { return .none }
+        if id == contextID || ancestryIDs.contains(id) { return .direct }
+        if contextIDs.contains(id) { return .branch }
+        return .subdued
+    }
+
+    private func relationships(
+        items: [FocusSceneSnapshot.Item],
+        contextID: UUID?,
+        contextIDs: Set<UUID>,
+        ancestryIDs: Set<UUID>
+    ) -> [FocusSceneSnapshot.Relationship] {
+        let byID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+        var result: [FocusSceneSnapshot.Relationship] = []
+
+        for child in items {
+            guard let parentID = child.parentID, let parent = byID[parentID] else { continue }
+            let emphasis = relationshipEmphasis(
+                sourceID: parentID,
+                targetID: child.id,
+                kind: .hierarchy,
+                contextID: contextID,
+                contextIDs: contextIDs,
+                ancestryIDs: ancestryIDs
+            )
+            result.append(FocusSceneSnapshot.Relationship(
+                id: .init(kind: .hierarchy, sourceID: parentID, targetID: child.id),
+                sourceID: parentID,
+                targetID: child.id,
+                kind: .hierarchy,
+                emphasis: emphasis,
+                attention: (parent.attention + child.attention) / 2,
+                isDimmed: parent.isDimmed || child.isDimmed
+            ))
+        }
+
+        var seenCrossLinks: Set<Set<UUID>> = []
+        for node in map.nodes {
+            for relatedID in node.relatedNodeIDs where byID[relatedID] != nil {
+                let pair: Set<UUID> = [node.id, relatedID]
+                guard pair.count == 2, seenCrossLinks.insert(pair).inserted,
+                      let source = byID[node.id], let target = byID[relatedID] else { continue }
+                let ordered = [node.id, relatedID].sorted { $0.uuidString < $1.uuidString }
+                let emphasis = relationshipEmphasis(
+                    sourceID: ordered[0],
+                    targetID: ordered[1],
+                    kind: .crossLink,
+                    contextID: contextID,
+                    contextIDs: contextIDs,
+                    ancestryIDs: ancestryIDs
+                )
+                result.append(FocusSceneSnapshot.Relationship(
+                    id: .init(kind: .crossLink, sourceID: ordered[0], targetID: ordered[1]),
+                    sourceID: ordered[0],
+                    targetID: ordered[1],
+                    kind: .crossLink,
+                    emphasis: emphasis,
+                    attention: (source.attention + target.attention) / 2,
+                    isDimmed: source.isDimmed || target.isDimmed
+                ))
+            }
+        }
+        return result
+    }
+
+    private func relationshipEmphasis(
+        sourceID: UUID,
+        targetID: UUID,
+        kind: FocusSceneSnapshot.Relationship.Kind,
+        contextID: UUID?,
+        contextIDs: Set<UUID>,
+        ancestryIDs: Set<UUID>
+    ) -> FocusSceneSnapshot.Relationship.Emphasis {
+        guard let contextID else { return .standard }
+        if sourceID == contextID || targetID == contextID { return .direct }
+        if kind == .hierarchy,
+           ancestryIDs.contains(sourceID),
+           ancestryIDs.contains(targetID) || targetID == contextID {
+            return .direct
+        }
+        if contextIDs.contains(sourceID), contextIDs.contains(targetID) { return .branch }
+        return .subdued
     }
 
     private func withAnimationIntent(_ change: () -> Void) { change() }

@@ -31,6 +31,28 @@ struct FocusSpaceApp: App {
                     .keyboardShortcut("z", modifiers: [.command, .shift])
                     .disabled(!store.canRedo)
             }
+            CommandMenu("View") {
+                Button("Frame Selected Branch", action: store.frameSelection)
+                    .keyboardShortcut("f", modifiers: [.command, .shift])
+                    .disabled(!store.canFrameSelection)
+                Divider()
+                Button("Zoom In") { store.zoomCamera(by: 1.18, animated: true) }
+                    .keyboardShortcut("=", modifiers: .command)
+                Button("Zoom Out") { store.zoomCamera(by: 0.84, animated: true) }
+                    .keyboardShortcut("-", modifiers: .command)
+                Divider()
+                Button("Pan Left") { store.panCamera(horizontal: 36, vertical: 0) }
+                    .keyboardShortcut(.leftArrow, modifiers: .option)
+                Button("Pan Right") { store.panCamera(horizontal: -36, vertical: 0) }
+                    .keyboardShortcut(.rightArrow, modifiers: .option)
+                Button("Pan Up") { store.panCamera(horizontal: 0, vertical: 36) }
+                    .keyboardShortcut(.upArrow, modifiers: .option)
+                Button("Pan Down") { store.panCamera(horizontal: 0, vertical: -36) }
+                    .keyboardShortcut(.downArrow, modifiers: .option)
+                Divider()
+                Button("Reset View") { store.resetCamera() }
+                    .keyboardShortcut("0", modifiers: .command)
+            }
         }
     }
 }

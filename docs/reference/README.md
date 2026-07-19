@@ -24,4 +24,22 @@ Captured from the signed release bundle after live acceptance of Milestone 2 usi
 
 SHA-256: `80d33766467577a1b4ab206d2e1d000273971d5ea26717d78ad5e22d09117a29`
 
+## `milestone-3-relationships.png`
+
+Captured from the signed release bundle using the expanded deep-hierarchy fixture. It records clipped curved hierarchy paths, the dashed cross-link, and depth-aware relationship intensity.
+
+SHA-256: `499d3cf851ad0057707d1c47c74aa96fd8f01bc0986af3a05a240dcc6cf4651f`
+
+## `milestone-4-framed-branch.png`
+
+Captured after selecting **Intelligence** and invoking Frame Branch. The selected branch is centred independently of semantic Z, while attention values remain unchanged.
+
+SHA-256: `2ca6b16176ea2afd8e825b9168a8747639bd74fa9160b4db1b48d7655984b4b6`
+
+## `milestone-4-orbit.png`
+
+Captured after orbiting the framed deep hierarchy. Perspective and card planes expose the universe's physical depth without altering its attention model.
+
+SHA-256: `c403837bb082b6fe2beb57a051964619648c9540336b45813051f0dd76d507c8`
+
 The reference images are retained to support repeatable before/after review.

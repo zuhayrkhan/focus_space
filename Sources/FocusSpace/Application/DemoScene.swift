@@ -10,6 +10,7 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
         let kind: FocusNodeKind
         let urgency: FocusNodeUrgency
         let isEnabled: Bool
+        let relatedIndices: [Int]
 
         init(
             _ title: String,
@@ -19,7 +20,8 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
             _ parentIndex: Int? = nil,
             kind: FocusNodeKind = .task,
             urgency: FocusNodeUrgency = .none,
-            isEnabled: Bool = true
+            isEnabled: Bool = true,
+            relatedIndices: [Int] = []
         ) {
             self.title = title
             self.x = x
@@ -29,6 +31,7 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
             self.kind = kind
             self.urgency = urgency
             self.isEnabled = isEnabled
+            self.relatedIndices = relatedIndices
         }
     }
 
@@ -67,11 +70,11 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
                     Specification("Critical Now", 0, -0.15, 0.98, kind: .project, urgency: .overdue),
                     Specification("Risk & Compliance", -2.25, 0.55, 0.72, 0, kind: .group),
                     Specification("UI / UX", -0.8, 0.62, 0.68, 0, kind: .group),
-                    Specification("Performance", 0.8, 0.62, 0.64, 0, kind: .group),
+                    Specification("Performance", 0.8, 0.62, 0.64, 0, kind: .group, relatedIndices: [5]),
                     Specification("Integrations", 2.25, 0.55, 0.60, 0, kind: .group),
                     Specification("Reg change impact", -2.8, -0.55, 0.54, 2, urgency: .overdue),
                     Specification("Audit preparation and evidence review", -1.75, -0.55, 0.50, 2, urgency: .soon),
-                    Specification("Update model", -1.35, -1.55, 0.91, 1),
+                    Specification("Update model", -1.35, -1.55, 0.91, 1, relatedIndices: [10]),
                     Specification("競合分析 / Competitor analysis", 0, -1.65, 0.86, 1),
                     Specification("Deck for Exec mtg", 1.35, -1.55, 0.82, 1, kind: .reference),
                     Specification("Investigate spikes", 1.8, -0.55, 0.48, 5),
@@ -108,9 +111,9 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
                     Specification("Tune focus glow", -3.3, -0.95, 0.92, 4, urgency: .soon),
                     Specification("Contrast checks", -2.2, -1.6, 0.84, 4),
                     Specification("Spring response", -1.4, -0.95, 0.80, 5),
-                    Specification("Gravity cues", -0.55, -1.6, 0.76, 6),
+                    Specification("Gravity cues", -0.55, -1.6, 0.76, 6, relatedIndices: [14]),
                     Specification("Semantic zoom", 0.35, -0.95, 0.72, 7),
-                    Specification("JSON migration", 1.25, -1.6, 0.68, 8, kind: .reference),
+                    Specification("JSON migration", 1.25, -1.6, 0.68, 8, kind: .reference, relatedIndices: [7]),
                     Specification("Keyboard flow", 2.1, -0.95, 0.64, 9),
                     Specification("Reduce Motion", 3.1, -1.6, 0.60, 9),
                     Specification("Focus selected branch", 0.35, -2.4, 0.82, 14)
@@ -129,7 +132,8 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
                     index < 7 ? nil : (index % 7),
                     kind: kinds[index % kinds.count],
                     urgency: index % 13 == 0 ? .overdue : (index % 9 == 0 ? .soon : .none),
-                    isEnabled: index % 11 != 0
+                    isEnabled: index % 11 != 0,
+                    relatedIndices: index % 11 == 0 ? [(index + 9) % 32] : []
                 )
             }
             return Self.makeMap(title: rawValue, specifications: specs)
@@ -163,6 +167,7 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
                 position: SpatialPoint(x: specification.x, y: specification.y),
                 attention: specification.attention,
                 parentID: specification.parentIndex.map { ids[$0] },
+                relatedNodeIDs: Set(specification.relatedIndices.map { ids[$0] }),
                 urgency: specification.urgency,
                 isEnabled: specification.isEnabled,
                 createdAt: timestamp,

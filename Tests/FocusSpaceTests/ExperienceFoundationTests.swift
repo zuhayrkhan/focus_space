@@ -177,6 +177,78 @@ final class ExperienceFoundationTests: XCTestCase {
         }
     }
 
+    func testRelationshipCurvesClipNodeBodiesAndDistinguishCrossLinks() {
+        let source = SIMD3<Float>(0, 0, -1)
+        let target = SIMD3<Float>(3, -2, 0.5)
+        let hierarchy = RelationshipCurveGeometry.make(
+            from: source,
+            sourceSize: SIMD2<Float>(1.6, 0.7),
+            to: target,
+            targetSize: SIMD2<Float>(1.3, 0.5),
+            kind: .hierarchy
+        )
+        let crossLink = RelationshipCurveGeometry.make(
+            from: source,
+            sourceSize: SIMD2<Float>(1.6, 0.7),
+            to: target,
+            targetSize: SIMD2<Float>(1.3, 0.5),
+            kind: .crossLink
+        )
+
+        XCTAssertGreaterThan(simd_distance(hierarchy.points.first!, source), 0.2)
+        XCTAssertGreaterThan(simd_distance(hierarchy.points.last!, target), 0.2)
+        XCTAssertGreaterThan(crossLink.dashedSegments.count, 3)
+        XCTAssertLessThan(crossLink.dashedSegments.count, crossLink.solidSegments.count)
+        XCTAssertNotEqual(hierarchy.points[hierarchy.points.count / 2], crossLink.points[crossLink.points.count / 2])
+        XCTAssertGreaterThan(hierarchy.points[hierarchy.points.count / 2].z, min(source.z, target.z))
+    }
+
+    @MainActor
+    func testSelectionAndHoverCreateSemanticRelationshipContext() throws {
+        let root = FocusNode(title: "Root", kind: .project)
+        let branch = FocusNode(title: "Branch", kind: .group, parentID: root.id)
+        let sibling = FocusNode(title: "Sibling", kind: .group, parentID: root.id)
+        let leaf = FocusNode(title: "Leaf", parentID: branch.id, relatedNodeIDs: [sibling.id])
+        let unrelated = FocusNode(title: "Unrelated")
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let repository = JSONFocusMapRepository(fileURL: folder.appending(path: "map.json"))
+        try repository.save(FocusMap(nodes: [root, branch, sibling, leaf, unrelated]))
+        let store = FocusSpaceStore(repository: repository)
+        store.filter = .all
+        store.select(leaf.id)
+
+        var snapshot = store.sceneSnapshot
+        XCTAssertEqual(snapshot.items.first { $0.id == root.id }?.contextRole, .direct)
+        XCTAssertEqual(snapshot.items.first { $0.id == sibling.id }?.contextRole, .subdued)
+        XCTAssertEqual(snapshot.items.first { $0.id == unrelated.id }?.contextRole, .subdued)
+        XCTAssertEqual(snapshot.relationships.filter { $0.kind == .crossLink }.count, 1)
+        XCTAssertTrue(snapshot.relationships.contains { $0.targetID == leaf.id && $0.emphasis == .direct })
+
+        store.hover(root.id)
+        snapshot = store.sceneSnapshot
+        XCTAssertEqual(snapshot.items.first { $0.id == sibling.id }?.contextRole, .branch)
+        XCTAssertEqual(snapshot.items.first { $0.id == leaf.id }?.contextRole, .branch)
+        store.hover(nil)
+        XCTAssertEqual(store.sceneSnapshot.items.first { $0.id == root.id }?.contextRole, .direct)
+    }
+
+    @MainActor
+    func testRendererBuildsCurvedHierarchyAndDashedCrossLinkEntities() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let store = FocusSpaceStore(repository: JSONFocusMapRepository(fileURL: folder.appending(path: "map.json")))
+        store.preview(.northStar)
+        store.filter = .all
+        let renderer = RealityFocusRenderer(quality: .efficient)
+        let root = renderer.makeScene()
+        renderer.reconcile(root: root, snapshot: store.sceneSnapshot)
+
+        let links = root.children.filter { $0.name.hasPrefix("link-") }
+        XCTAssertEqual(links.count, store.sceneSnapshot.relationships.count)
+        XCTAssertTrue(links.contains { $0.findEntity(named: "hierarchy-core") != nil })
+        XCTAssertTrue(links.contains { $0.findEntity(named: "cross-link-core") != nil })
+        XCTAssertTrue(links.allSatisfy { $0.findEntity(named: "link-glow") != nil })
+    }
+
     @MainActor
     func testStoreCarriesHierarchyAndEditableVisualStatesIntoSnapshot() throws {
         let parent = FocusNode(title: "Parent", kind: .project)
@@ -198,6 +270,74 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertEqual(item.urgency, .overdue)
         XCTAssertFalse(item.isEnabled)
         XCTAssertTrue(store.canUndo)
+    }
+
+    func testCameraPoseAppliesSoftWorkspaceBounds() {
+        let pose = FocusCameraIntent.Pose(
+            target: SpatialPoint(x: 99, y: -99),
+            targetAttention: 4,
+            yaw: 180,
+            pitch: -90,
+            distance: 100
+        ).bounded()
+        XCTAssertEqual(pose.target.x, 6.5)
+        XCTAssertEqual(pose.target.y, -4.2)
+        XCTAssertEqual(pose.targetAttention, 1)
+        XCTAssertEqual(pose.yaw, 38)
+        XCTAssertEqual(pose.pitch, -20)
+        XCTAssertEqual(pose.distance, 14.5)
+    }
+
+    @MainActor
+    func testCameraNavigationDoesNotMutateAttentionAndFramesWholeBranch() throws {
+        let root = FocusNode(title: "Root", position: SpatialPoint(x: -2, y: 1), attention: 0.2)
+        let child = FocusNode(title: "Child", position: SpatialPoint(x: 3, y: -2), attention: 0.8, parentID: root.id)
+        let unrelated = FocusNode(title: "Other", position: SpatialPoint(x: 6, y: 4), attention: 1)
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let repository = JSONFocusMapRepository(fileURL: folder.appending(path: "map.json"))
+        try repository.save(FocusMap(nodes: [root, child, unrelated]))
+        let store = FocusSpaceStore(repository: repository)
+        let originalMap = store.map
+
+        store.orbitCamera(horizontal: 120, vertical: 50)
+        store.zoomCamera(by: 1.4)
+        store.panCamera(horizontal: 40, vertical: -30)
+        XCTAssertEqual(store.map, originalMap)
+        XCTAssertEqual(store.cameraIntent.mode, .free)
+
+        store.select(root.id)
+        store.frameSelection()
+        XCTAssertEqual(store.cameraIntent.mode, .framed(root.id))
+        XCTAssertEqual(store.cameraIntent.pose.target.x, 0.5, accuracy: 0.001)
+        XCTAssertEqual(store.cameraIntent.pose.target.y, -0.5, accuracy: 0.001)
+        XCTAssertEqual(store.cameraIntent.pose.targetAttention, 0.5, accuracy: 0.001)
+        XCTAssertEqual(store.map, originalMap)
+
+        store.resetCamera()
+        XCTAssertEqual(store.cameraIntent.mode, .canonical)
+        XCTAssertEqual(store.cameraIntent.pose, .canonical)
+    }
+
+    @MainActor
+    func testRendererConsumesCameraIntentIndependentlyFromSceneSnapshot() throws {
+        let renderer = RealityFocusRenderer(quality: .efficient)
+        let root = renderer.makeScene()
+        let camera = try XCTUnwrap(root.findEntity(named: "focus-camera"))
+        let originalPosition = camera.position
+        let pose = FocusCameraIntent.Pose(
+            target: SpatialPoint(x: 2, y: -1),
+            targetAttention: 0.15,
+            yaw: 22,
+            pitch: -8,
+            distance: 7
+        )
+        renderer.updateCamera(
+            root: root,
+            intent: FocusCameraIntent(pose: pose, mode: .free, revision: 1, isAnimated: false),
+            reduceMotion: false
+        )
+        XCTAssertNotEqual(camera.position, originalPosition)
+        XCTAssertEqual(camera.position, camera.position(relativeTo: root))
     }
 
     @MainActor

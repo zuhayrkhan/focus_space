@@ -9,6 +9,7 @@ final class RealityFocusRenderer {
     let quality: SceneQualityProfile
     let tokens: FocusVisualTokens
     private var lastSnapshot: FocusSceneSnapshot?
+    private var lastCameraRevision: Int?
     private var ambientController: AnimationPlaybackController?
     private var nodeMeshes: [FocusNodeKind: MeshResource] = [:]
     private var frameMeshes: [String: MeshResource] = [:]
@@ -60,6 +61,36 @@ final class RealityFocusRenderer {
             ambientController?.pause()
         } else {
             ambientController?.resume()
+        }
+    }
+
+    func updateCamera(root: Entity, intent: FocusCameraIntent, reduceMotion: Bool) {
+        guard lastCameraRevision != intent.revision,
+              let camera = root.findEntity(named: "focus-camera") else { return }
+        lastCameraRevision = intent.revision
+        let range = Double(tokens.attentionNearZ - tokens.attentionFarZ)
+        let target = SIMD3<Float>(
+            Float(intent.pose.target.x),
+            Float(intent.pose.target.y),
+            tokens.attentionFarZ + Float(intent.pose.targetAttention * range)
+        )
+        let yaw = Float(intent.pose.yaw * .pi / 180)
+        let pitch = Float(intent.pose.pitch * .pi / 180)
+        let distance = Float(intent.pose.distance)
+        let offset = SIMD3<Float>(
+            sin(yaw) * cos(pitch) * distance,
+            sin(pitch) * distance,
+            cos(yaw) * cos(pitch) * distance
+        )
+        let position = target + offset
+        let direction = simd_normalize(target - position)
+        let orientation = simd_quatf(from: SIMD3<Float>(0, 0, -1), to: direction)
+        let transform = Transform(scale: .one, rotation: orientation, translation: position)
+        camera.stopAllAnimations(recursive: false)
+        if intent.isAnimated, !reduceMotion {
+            camera.move(to: transform, relativeTo: root, duration: 0.58, timingFunction: .easeInOut)
+        } else {
+            camera.transform = transform
         }
     }
 
@@ -225,7 +256,11 @@ final class RealityFocusRenderer {
             isEnabled: item.isEnabled
         )
         entity.position = position(for: item)
-        entity.components.set(OpacityComponent(opacity: item.isDimmed ? 0.06 : style.opacity))
+        let contextOpacity: Float = switch item.contextRole {
+        case .subdued: 0.34
+        case .none, .branch, .direct: 1
+        }
+        entity.components.set(OpacityComponent(opacity: item.isDimmed ? 0.06 : style.opacity * contextOpacity))
         let depthScale = Float(0.78 + item.attention * 0.24)
         entity.scale = SIMD3<Float>(repeating: depthScale)
 
@@ -268,7 +303,7 @@ final class RealityFocusRenderer {
         }
         let title = NodeLabelLayout.displayTitle(item.title, singleLineLimit: singleLineLimit)
         let attentionBand = Int(item.attention * 20)
-        let decorationName = "decorations-\(item.kind.rawValue)-\(item.urgency.rawValue)-\(item.isEnabled)-\(item.isSelected)-\(attentionBand)-\(title)"
+        let decorationName = "decorations-\(item.kind.rawValue)-\(item.urgency.rawValue)-\(item.isEnabled)-\(item.isSelected)-\(item.isHovered)-\(item.contextRole)-\(attentionBand)-\(title)"
         if entity.children.contains(where: { $0.name == decorationName }) { return }
         for child in entity.children where child.name.hasPrefix("decorations-") { child.removeFromParent() }
 
@@ -337,6 +372,19 @@ final class RealityFocusRenderer {
                 name: "selection-halo"
             )
             halo.position.z = -0.012
+            decorations.addChild(halo)
+        }
+
+        if item.isHovered || item.contextRole == .branch {
+            let halo = makeFrame(
+                width: style.width + (item.isHovered ? 0.18 : 0.08),
+                height: style.height + (item.isHovered ? 0.18 : 0.08),
+                thickness: item.isHovered ? 0.014 : 0.007,
+                color: item.isHovered ? tokens.focusCore.nsColor : tokens.focusBlue.nsColor,
+                opacity: item.isHovered ? 0.52 : 0.20,
+                name: item.isHovered ? "hover-halo" : "family-halo"
+            )
+            halo.position.z = -0.018
             decorations.addChild(halo)
         }
 
@@ -421,26 +469,98 @@ final class RealityFocusRenderer {
 
     private func reconcileRelationships(root: Entity, snapshot: FocusSceneSnapshot) {
         for child in root.children where child.name.hasPrefix("link-") { child.removeFromParent() }
-        let visible = snapshot.items.filter { !$0.isDimmed }
-        let byID = Dictionary(uniqueKeysWithValues: visible.map { ($0.id, $0) })
-        for child in visible {
-            guard let parentID = child.parentID, let parent = byID[parentID] else { continue }
-            let start = position(for: parent)
-            let end = position(for: child)
-            let vector = end - start
-            let length = simd_length(vector)
-            guard length > 0.001 else { continue }
-            let mesh = MeshResource.generateBox(width: length, height: 0.009, depth: 0.009)
-            let averageAttention = (parent.attention + child.attention) / 2
-            let material = UnlitMaterial(
-                color: tokens.focusBlue.nsColor.withAlphaComponent(0.12 + averageAttention * 0.24)
+        let byID = Dictionary(uniqueKeysWithValues: snapshot.items.map { ($0.id, $0) })
+        for relationship in snapshot.relationships {
+            guard let source = byID[relationship.sourceID], let target = byID[relationship.targetID] else { continue }
+            let sourceStyle = visualStyle(for: source)
+            let targetStyle = visualStyle(for: target)
+            let curve = RelationshipCurveGeometry.make(
+                from: position(for: source),
+                sourceSize: SIMD2<Float>(sourceStyle.width, sourceStyle.height),
+                to: position(for: target),
+                targetSize: SIMD2<Float>(targetStyle.width, targetStyle.height),
+                kind: relationship.kind,
+                sampleCount: quality == .efficient ? 14 : 24
             )
-            let link = ModelEntity(mesh: mesh, materials: [material])
-            link.name = "link-\(parentID)-\(child.id)"
-            link.position = (start + end) / 2
-            link.orientation = simd_quatf(from: SIMD3<Float>(1, 0, 0), to: vector / length)
+            let segments = relationship.kind == .crossLink ? curve.dashedSegments : curve.solidSegments
+            let link = Entity()
+            link.name = "link-\(relationship.kind.rawValue)-\(relationship.sourceID)-\(relationship.targetID)"
+            let opacity = relationshipOpacity(relationship)
+            if let glow = try? makeRelationshipMesh(segments: segments, thickness: relationshipThickness(relationship) * 2.7) {
+                var material = UnlitMaterial(color: relationshipColor(relationship))
+                material.faceCulling = .none
+                material.blending = .transparent(opacity: .init(scale: opacity * 0.20))
+                let entity = ModelEntity(mesh: glow, materials: [material])
+                entity.name = "link-glow"
+                link.addChild(entity)
+            }
+            if let core = try? makeRelationshipMesh(segments: segments, thickness: relationshipThickness(relationship)) {
+                var material = UnlitMaterial(color: relationshipColor(relationship))
+                material.faceCulling = .none
+                material.blending = .transparent(opacity: .init(scale: opacity))
+                let entity = ModelEntity(mesh: core, materials: [material])
+                entity.name = relationship.kind == .crossLink ? "cross-link-core" : "hierarchy-core"
+                link.addChild(entity)
+            }
             root.addChild(link)
         }
+    }
+
+    private func visualStyle(for item: FocusSceneSnapshot.Item) -> NodeVisualStyle {
+        NodeVisualStyle.resolve(
+            kind: item.kind,
+            attention: item.attention,
+            hierarchyDepth: item.hierarchyDepth,
+            urgency: item.urgency,
+            isEnabled: item.isEnabled
+        )
+    }
+
+    private func relationshipColor(_ relationship: FocusSceneSnapshot.Relationship) -> NSColor {
+        relationship.kind == .crossLink
+            ? NSColor(red: 0.54, green: 0.40, blue: 1, alpha: 1)
+            : tokens.focusBlue.nsColor
+    }
+
+    private func relationshipOpacity(_ relationship: FocusSceneSnapshot.Relationship) -> Float {
+        let emphasis: Float = switch relationship.emphasis {
+        case .subdued: 0.08
+        case .standard: 0.24
+        case .branch: 0.42
+        case .direct: 0.72
+        }
+        let attention = Float(0.52 + relationship.attention * 0.48)
+        return emphasis * attention * (relationship.isDimmed ? 0.22 : 1)
+    }
+
+    private func relationshipThickness(_ relationship: FocusSceneSnapshot.Relationship) -> Float {
+        switch relationship.emphasis {
+        case .subdued: 0.004
+        case .standard: 0.007
+        case .branch: 0.010
+        case .direct: 0.014
+        }
+    }
+
+    private func makeRelationshipMesh(
+        segments: [RelationshipCurveGeometry.Segment],
+        thickness: Float
+    ) throws -> MeshResource {
+        var positions: [SIMD3<Float>] = []
+        var indices: [UInt32] = []
+        for segment in segments {
+            appendLineQuad(
+                from: segment.start,
+                to: segment.end,
+                thickness: thickness,
+                positions: &positions,
+                indices: &indices
+            )
+        }
+        var descriptor = MeshDescriptor(name: "relationship-curve")
+        descriptor.positions = MeshBuffers.Positions(positions)
+        descriptor.primitives = .triangles(indices)
+        return try MeshResource.generate(from: [descriptor])
     }
 
     private func position(for item: FocusSceneSnapshot.Item) -> SIMD3<Float> {

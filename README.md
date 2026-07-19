@@ -43,4 +43,6 @@ RealityKit types do not cross into the domain or application layers.
 - [Visual experience roadmap](plans/visual-experience-roadmap.md)
 - [Milestone 1 spatial atmosphere](docs/milestone-1-spatial-atmosphere.md)
 - [Milestone 2 node visual language](docs/milestone-2-node-visual-language.md)
+- [Milestone 3 spatial relationships](docs/milestone-3-spatial-relationships.md)
+- [Milestone 4 camera navigation](docs/milestone-4-camera-navigation.md)
 - [Visual north star](docs/reference/focus-space-visual-north-star.png)
