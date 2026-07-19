@@ -487,7 +487,7 @@ final class ExperienceFoundationTests: XCTestCase {
     }
 
     @MainActor
-    func testTrackpadMagnificationInstallsANativeRecognizerOnTheWindow() {
+    func testTrackpadMagnificationMonitorsTheNativeEventStreamForItsWindow() {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
             styleMask: [.titled],
@@ -506,10 +506,10 @@ final class ExperienceFoundationTests: XCTestCase {
         let coordinator = bridge.makeCoordinator()
         coordinator.attach(to: attachment)
 
-        XCTAssertTrue(window.contentView?.gestureRecognizers.contains { $0 is NSMagnificationGestureRecognizer } == true)
+        XCTAssertTrue(coordinator.isMonitoring)
 
         coordinator.detach()
-        XCTAssertFalse(window.contentView?.gestureRecognizers.contains { $0 is NSMagnificationGestureRecognizer } == true)
+        XCTAssertFalse(coordinator.isMonitoring)
     }
 
     @MainActor

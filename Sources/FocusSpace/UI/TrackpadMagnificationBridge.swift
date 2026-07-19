@@ -42,19 +42,18 @@ struct TrackpadMagnificationBridge: NSViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator: NSObject, NSGestureRecognizerDelegate {
+    final class Coordinator: NSObject {
         var onBegan: () -> Void
         var onChanged: (Double) -> Void
         var onEnded: (Double) -> Void
         var onCancelled: () -> Void
         weak var attachmentView: MagnificationAttachmentView?
-        private weak var hostView: NSView?
+        private weak var hostWindow: NSWindow?
+        private var eventMonitor: Any?
+        private var accumulatedMagnification = 0.0
+        private var isGestureActive = false
 
-        private lazy var recognizer: NSMagnificationGestureRecognizer = {
-            let recognizer = NSMagnificationGestureRecognizer(target: self, action: #selector(handleMagnification(_:)))
-            recognizer.delegate = self
-            return recognizer
-        }()
+        var isMonitoring: Bool { eventMonitor != nil }
 
         init(
             onBegan: @escaping () -> Void,
@@ -70,48 +69,52 @@ struct TrackpadMagnificationBridge: NSViewRepresentable {
 
         func attach(to attachment: MagnificationAttachmentView) {
             attachmentView = attachment
-            guard let contentView = attachment.window?.contentView,
-                  hostView !== contentView else { return }
+            guard let window = attachment.window,
+                  hostWindow !== window else { return }
             detach()
-            hostView = contentView
-            contentView.addGestureRecognizer(recognizer)
+            hostWindow = window
+            eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .magnify) { [weak self] event in
+                self?.handleMagnification(event)
+                return event
+            }
         }
 
         func detach() {
-            if let hostView { hostView.removeGestureRecognizer(recognizer) }
-            hostView = nil
+            if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
+            eventMonitor = nil
+            hostWindow = nil
+            accumulatedMagnification = 0
+            isGestureActive = false
         }
 
-        func gestureRecognizerShouldBegin(_ gestureRecognizer: NSGestureRecognizer) -> Bool {
+        private func handleMagnification(_ event: NSEvent) {
             guard let attachmentView,
-                  attachmentView.window != nil else { return false }
-            let point = gestureRecognizer.location(in: attachmentView)
-            return attachmentView.bounds.contains(point)
-        }
+                  event.window === hostWindow,
+                  attachmentView.bounds.contains(attachmentView.convert(event.locationInWindow, from: nil)) else { return }
 
-        func gestureRecognizer(
-            _ gestureRecognizer: NSGestureRecognizer,
-            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: NSGestureRecognizer
-        ) -> Bool {
-            true
-        }
+            if event.phase.contains(.mayBegin) { return }
 
-        @objc private func handleMagnification(_ recognizer: NSMagnificationGestureRecognizer) {
-            let factor = Self.scaleFactor(for: Double(recognizer.magnification))
-            switch recognizer.state {
-            case .began:
+            if event.phase.contains(.cancelled) {
+                if isGestureActive { onCancelled() }
+                accumulatedMagnification = 0
+                isGestureActive = false
+                return
+            }
+
+            if event.phase.contains(.began) || !isGestureActive {
+                accumulatedMagnification = 0
+                isGestureActive = true
                 onBegan()
-                onChanged(factor)
-            case .changed:
-                onChanged(factor)
-            case .ended:
+            }
+
+            accumulatedMagnification += Double(event.magnification)
+            let factor = Self.scaleFactor(for: accumulatedMagnification)
+            if event.phase.contains(.ended) {
                 onEnded(factor)
-            case .cancelled, .failed:
-                onCancelled()
-            case .possible:
-                break
-            @unknown default:
-                onCancelled()
+                accumulatedMagnification = 0
+                isGestureActive = false
+            } else {
+                onChanged(factor)
             }
         }
 
