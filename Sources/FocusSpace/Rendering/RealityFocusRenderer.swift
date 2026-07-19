@@ -10,6 +10,8 @@ final class RealityFocusRenderer {
     let tokens: FocusVisualTokens
     private var lastSnapshot: FocusSceneSnapshot?
     private var ambientController: AnimationPlaybackController?
+    private var nodeMeshes: [FocusNodeKind: MeshResource] = [:]
+    private var frameMeshes: [String: MeshResource] = [:]
     private(set) var isAmbientMotionPaused = false
 
     init(
@@ -199,7 +201,14 @@ final class RealityFocusRenderer {
     }
 
     private func makeNode(name: String) -> ModelEntity {
-        let mesh = MeshResource.generateBox(width: 1.42, height: 0.62, depth: 0.15, cornerRadius: 0.12)
+        let style = NodeVisualStyle.resolve(
+            kind: .task,
+            attention: 0.5,
+            hierarchyDepth: 0,
+            urgency: .none,
+            isEnabled: true
+        )
+        let mesh = mesh(for: .task, style: style)
         let entity = ModelEntity(mesh: mesh, materials: [UnlitMaterial(color: .white)])
         entity.name = name
         entity.components.set(InputTargetComponent())
@@ -208,52 +217,206 @@ final class RealityFocusRenderer {
     }
 
     private func update(entity: Entity, for item: FocusSceneSnapshot.Item) {
+        let style = NodeVisualStyle.resolve(
+            kind: item.kind,
+            attention: item.attention,
+            hierarchyDepth: item.hierarchyDepth,
+            urgency: item.urgency,
+            isEnabled: item.isEnabled
+        )
         entity.position = position(for: item)
-        let distanceFade = Float(0.42 + item.attention * 0.58)
-        entity.components.set(OpacityComponent(opacity: item.isDimmed ? 0.07 : distanceFade))
+        entity.components.set(OpacityComponent(opacity: item.isDimmed ? 0.06 : style.opacity))
         let depthScale = Float(0.78 + item.attention * 0.24)
-        let selectedScale: Float = item.isSelected ? 1.055 : 1
-        entity.scale = SIMD3<Float>(repeating: depthScale * selectedScale)
+        entity.scale = SIMD3<Float>(repeating: depthScale)
 
         guard let model = entity as? ModelEntity else { return }
-        let warmth = Float(item.attention)
-        let color = NSColor(
-            red: CGFloat(0.10 + warmth * 0.16),
-            green: CGFloat(0.18 + warmth * 0.21),
-            blue: CGFloat(0.36 + warmth * 0.52),
-            alpha: 1
-        )
+        model.model?.mesh = mesh(for: item.kind, style: style)
+        model.generateCollisionShapes(recursive: false)
+        let color = style.color.nsColor.withSaturation(CGFloat(style.saturation))
         model.model?.materials = [
             PhysicallyBasedMaterial.focusSpace(
                 color: color,
-                attention: warmth,
-                selected: item.isSelected,
+                attention: Float(item.attention),
+                emissiveIntensity: style.emissiveIntensity,
                 tokens: tokens
             )
         ]
-        updateLabel(on: model, item: item)
+        updateDecorations(on: model, item: item, style: style)
     }
 
-    private func updateLabel(on entity: ModelEntity, item: FocusSceneSnapshot.Item) {
-        let labelName = "label-\(item.title)-\(item.isSelected)"
-        if entity.children.contains(where: { $0.name == labelName }) { return }
-        for child in entity.children where child.name.hasPrefix("label-") { child.removeFromParent() }
+    private func mesh(for kind: FocusNodeKind, style: NodeVisualStyle) -> MeshResource {
+        if let cached = nodeMeshes[kind] { return cached }
+        let mesh = MeshResource.generateBox(
+            width: style.width,
+            height: style.height,
+            depth: 0.15,
+            cornerRadius: style.cornerRadius
+        )
+        nodeMeshes[kind] = mesh
+        return mesh
+    }
 
+    private func updateDecorations(
+        on entity: ModelEntity,
+        item: FocusSceneSnapshot.Item,
+        style: NodeVisualStyle
+    ) {
+        let singleLineLimit = switch item.kind {
+        case .project, .group: 15
+        case .task, .reference: 12
+        case .someday: 14
+        }
+        let title = NodeLabelLayout.displayTitle(item.title, singleLineLimit: singleLineLimit)
+        let attentionBand = Int(item.attention * 20)
+        let decorationName = "decorations-\(item.kind.rawValue)-\(item.urgency.rawValue)-\(item.isEnabled)-\(item.isSelected)-\(attentionBand)-\(title)"
+        if entity.children.contains(where: { $0.name == decorationName }) { return }
+        for child in entity.children where child.name.hasPrefix("decorations-") { child.removeFromParent() }
+
+        let decorations = Entity()
+        decorations.name = decorationName
+        decorations.addChild(makeFrame(
+            width: style.width,
+            height: style.height,
+            thickness: item.kind == .project ? 0.018 : 0.011,
+            color: style.color.nsColor,
+            opacity: style.borderOpacity,
+            name: "kind-frame"
+        ))
+
+        let renderedTitle = title.contains("\n") ? title : "\n\(title)"
         let font = NSFont.systemFont(ofSize: 0.13, weight: item.isSelected ? .semibold : .medium)
         let mesh = MeshResource.generateText(
-            item.title,
+            renderedTitle,
             extrusionDepth: 0.002,
             font: font,
-            containerFrame: CGRect(x: 0, y: 0, width: 1.18, height: 0.4),
+            containerFrame: CGRect(x: 0, y: 0, width: CGFloat(style.width - 0.34), height: CGFloat(style.height - 0.12)),
             alignment: .center,
-            lineBreakMode: .byWordWrapping
+            lineBreakMode: .byTruncatingTail
         )
-        let labelAlpha = item.isDimmed ? 0.2 : 0.78 + item.attention * 0.22
+        let labelAlpha = item.isDimmed ? 0.2 : 0.76 + item.attention * 0.24
         let material = UnlitMaterial(color: NSColor(white: 0.98, alpha: labelAlpha))
         let label = ModelEntity(mesh: mesh, materials: [material])
-        label.name = labelName
-        label.position = SIMD3<Float>(-0.59, -0.12, 0.079)
-        entity.addChild(label)
+        label.name = "node-label"
+        label.position = SIMD3<Float>(
+            -style.width / 2 + 0.24,
+            -style.height / 2 + 0.05,
+            0.083
+        )
+        decorations.addChild(label)
+
+        let glyph = makeGlyph(
+            style.glyph,
+            size: 0.12,
+            color: NSColor(white: 1, alpha: 0.9),
+            name: "kind-glyph"
+        )
+        glyph.position = SIMD3<Float>(-style.width / 2 + 0.09, -0.045, 0.087)
+        decorations.addChild(glyph)
+
+        if let urgencyGlyph = style.urgencyGlyph,
+           let urgencyColor = style.urgencyColor {
+            let badge = ModelEntity(
+                mesh: .generateSphere(radius: 0.075),
+                materials: [UnlitMaterial(color: urgencyColor.nsColor)]
+            )
+            badge.name = "urgency-badge"
+            badge.position = SIMD3<Float>(style.width / 2 - 0.02, -style.height / 2 + 0.04, 0.11)
+            let mark = makeGlyph(urgencyGlyph, size: 0.095, color: .white, name: "urgency-mark")
+            mark.position = SIMD3<Float>(-0.025, -0.04, 0.076)
+            badge.addChild(mark)
+            decorations.addChild(badge)
+        }
+
+        if item.isSelected {
+            let halo = makeFrame(
+                width: style.width + 0.13,
+                height: style.height + 0.13,
+                thickness: 0.018,
+                color: tokens.focusCore.nsColor,
+                opacity: 0.68,
+                name: "selection-halo"
+            )
+            halo.position.z = -0.012
+            decorations.addChild(halo)
+        }
+
+        if !item.isEnabled {
+            let slash = ModelEntity(
+                mesh: .generateBox(width: style.width * 0.82, height: 0.016, depth: 0.007),
+                materials: [UnlitMaterial(color: NSColor(white: 0.86, alpha: 0.32))]
+            )
+            slash.name = "disabled-mark"
+            slash.orientation = simd_quatf(angle: -0.32, axis: SIMD3<Float>(0, 0, 1))
+            slash.position.z = 0.092
+            decorations.addChild(slash)
+        }
+        entity.addChild(decorations)
+    }
+
+    private func makeGlyph(
+        _ glyph: String,
+        size: CGFloat,
+        color: NSColor,
+        name: String
+    ) -> ModelEntity {
+        let mesh = MeshResource.generateText(
+            glyph,
+            extrusionDepth: 0.001,
+            font: .systemFont(ofSize: size, weight: .semibold)
+        )
+        let entity = ModelEntity(mesh: mesh, materials: [UnlitMaterial(color: color)])
+        entity.name = name
+        return entity
+    }
+
+    private func makeFrame(
+        width: Float,
+        height: Float,
+        thickness: Float,
+        color: NSColor,
+        opacity: Float,
+        name: String
+    ) -> Entity {
+        let meshKey = "\(width)-\(height)-\(thickness)"
+        let mesh: MeshResource
+        if let cached = frameMeshes[meshKey] {
+            mesh = cached
+        } else if let generated = try? makeFrameMesh(width: width, height: height, thickness: thickness) {
+            frameMeshes[meshKey] = generated
+            mesh = generated
+        } else {
+            return Entity()
+        }
+        var material = UnlitMaterial(color: color)
+        material.faceCulling = .none
+        material.blending = .transparent(opacity: .init(scale: opacity))
+        let frame = ModelEntity(mesh: mesh, materials: [material])
+        frame.name = name
+        return frame
+    }
+
+    private func makeFrameMesh(width: Float, height: Float, thickness: Float) throws -> MeshResource {
+        let outerX = width / 2 + thickness / 2
+        let outerY = height / 2 + thickness / 2
+        let innerX = max(width / 2 - thickness / 2, 0)
+        let innerY = max(height / 2 - thickness / 2, 0)
+        let z: Float = 0.081
+        let positions: [SIMD3<Float>] = [
+            SIMD3<Float>(-outerX, outerY, z), SIMD3<Float>(outerX, outerY, z),
+            SIMD3<Float>(outerX, -outerY, z), SIMD3<Float>(-outerX, -outerY, z),
+            SIMD3<Float>(-innerX, innerY, z), SIMD3<Float>(innerX, innerY, z),
+            SIMD3<Float>(innerX, -innerY, z), SIMD3<Float>(-innerX, -innerY, z)
+        ]
+        let indices: [UInt32] = [
+            0, 1, 4, 4, 1, 5,
+            1, 2, 5, 5, 2, 6,
+            2, 3, 6, 6, 3, 7,
+            3, 0, 7, 7, 0, 4
+        ]
+        var descriptor = MeshDescriptor(name: "node-frame")
+        descriptor.positions = MeshBuffers.Positions(positions)
+        descriptor.primitives = .triangles(indices)
+        return try MeshResource.generate(from: [descriptor])
     }
 
     private func reconcileRelationships(root: Entity, snapshot: FocusSceneSnapshot) {
@@ -284,7 +447,13 @@ final class RealityFocusRenderer {
         let range = tokens.attentionNearZ - tokens.attentionFarZ
         return SIMD3<Float>(
             Float(item.position.x),
-            Float(item.position.y),
+            Float(item.position.y) + NodeVisualStyle.resolve(
+                kind: item.kind,
+                attention: item.attention,
+                hierarchyDepth: item.hierarchyDepth,
+                urgency: item.urgency,
+                isEnabled: item.isEnabled
+            ).hierarchyOffset,
             tokens.attentionFarZ + Float(item.attention) * range
         )
     }
@@ -433,7 +602,7 @@ private extension PhysicallyBasedMaterial {
     static func focusSpace(
         color: NSColor,
         attention: Float,
-        selected: Bool,
+        emissiveIntensity: Float,
         tokens: FocusVisualTokens
     ) -> PhysicallyBasedMaterial {
         var material = PhysicallyBasedMaterial()
@@ -441,11 +610,26 @@ private extension PhysicallyBasedMaterial {
         material.roughness = .init(scale: 0.2 + (1 - attention) * 0.22)
         material.metallic = 0.12
         material.emissiveColor = .init(
-            color: selected
-                ? tokens.focusCore.nsColor
-                : tokens.focusBlue.nsColor.withAlphaComponent(CGFloat(0.28 + attention * 0.38))
+            color: color.withAlphaComponent(CGFloat(0.24 + attention * 0.42))
         )
-        material.emissiveIntensity = selected ? 0.46 : 0.08 + attention * 0.18
+        material.emissiveIntensity = emissiveIntensity
         return material
+    }
+}
+
+private extension NSColor {
+    func withSaturation(_ multiplier: CGFloat) -> NSColor {
+        guard let rgb = usingColorSpace(.deviceRGB) else { return self }
+        var hue: CGFloat = 0
+        var saturation: CGFloat = 0
+        var brightness: CGFloat = 0
+        var alpha: CGFloat = 0
+        rgb.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+        return NSColor(
+            hue: hue,
+            saturation: min(max(saturation * multiplier, 0), 1),
+            brightness: brightness,
+            alpha: alpha
+        )
     }
 }

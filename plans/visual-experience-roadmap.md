@@ -1,6 +1,6 @@
 # Focus Space visual experience roadmap
 
-Status: Milestones 0 and 1 complete; Milestone 2 proposed
+Status: Milestones 0, 1, and 2 complete; Milestone 3 proposed
 
 North star: the polished Focus Space concept supplied on 18 July 2026
 
@@ -62,6 +62,8 @@ Definition of done:
 
 ## Milestone 2 — Establish the node visual language
 
+Status: complete on 19 July 2026
+
 Goal: make node meaning and attention readable before the user reads a label.
 
 - Add a renderer-independent `FocusNodeKind` domain concept with a backward-compatible JSON migration:
@@ -105,6 +107,9 @@ Goal: deliver the pan, orbit, zoom, frame-selected, and reset interactions promi
 
 - Introduce a renderer-independent camera intent API.
 - Implement trackpad/mouse pan, restrained orbit, zoom, frame selected, and reset view.
+- Let the user frame a selected branch independently of where that branch sits on the semantic Z axis.
+- Use `Command-0` as the predictable animated return to the canonical focus-origin view.
+- Evaluate a gentle idle return to the canonical view, but never recenter while a branch focus or direct manipulation remains active.
 - Animate every programmatic camera transition with interruption-safe motion.
 - Add a minimal, auto-hiding navigation control strip inspired by the concept.
 - Keep camera movement within bounds that preserve Z as attention.

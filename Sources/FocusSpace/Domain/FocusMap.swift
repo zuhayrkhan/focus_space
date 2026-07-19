@@ -1,13 +1,27 @@
 import Foundation
 
 struct FocusMap: Codable, Equatable, Sendable {
-    var version = 1
+    static let currentVersion = 2
+
+    private(set) var version = Self.currentVersion
     var title: String
     var nodes: [FocusNode]
 
     init(title: String = "My Focus Space", nodes: [FocusNode] = []) {
         self.title = title
         self.nodes = nodes
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case version, title, nodes
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        _ = try container.decodeIfPresent(Int.self, forKey: .version)
+        version = Self.currentVersion
+        title = try container.decode(String.self, forKey: .title)
+        nodes = try container.decode([FocusNode].self, forKey: .nodes)
     }
 
     func node(id: UUID) -> FocusNode? {

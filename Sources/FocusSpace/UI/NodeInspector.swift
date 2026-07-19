@@ -9,6 +9,26 @@ struct NodeInspector: View {
                 VStack(alignment: .leading, spacing: 18) {
                     Text(node.title)
                         .font(.title2.weight(.semibold))
+                    Picker("Kind", selection: Binding(
+                        get: { store.selectedNode?.kind ?? .task },
+                        set: { store.setKind(node.id, to: $0) }
+                    )) {
+                        ForEach(FocusNodeKind.allCases) { kind in
+                            Text(kind.displayName).tag(kind)
+                        }
+                    }
+                    Picker("Urgency", selection: Binding(
+                        get: { store.selectedNode?.urgency ?? .none },
+                        set: { store.setUrgency(node.id, to: $0) }
+                    )) {
+                        ForEach(FocusNodeUrgency.allCases) { urgency in
+                            Text(urgency.displayName).tag(urgency)
+                        }
+                    }
+                    Toggle("Active", isOn: Binding(
+                        get: { store.selectedNode?.isEnabled ?? true },
+                        set: { store.setEnabled(node.id, to: $0) }
+                    ))
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("Attention")
