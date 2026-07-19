@@ -466,6 +466,23 @@ final class ExperienceFoundationTests: XCTestCase {
     }
 
     @MainActor
+    func testTrackpadMagnificationUsesOneStableGestureOriginInBothDirections() {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let store = FocusSpaceStore(repository: JSONFocusMapRepository(fileURL: folder.appending(path: "map.json")))
+        var origin = FocusCameraIntent.Pose.canonical
+        origin.distance = 10
+
+        let stretched = store.zoomCameraPose(by: 1.25, from: origin)
+        let pinched = store.zoomCameraPose(by: 0.8, from: origin)
+
+        XCTAssertEqual(stretched.distance, 8, accuracy: 0.001)
+        XCTAssertEqual(pinched.distance, 12.5, accuracy: 0.001)
+        XCTAssertEqual(stretched.yaw, origin.yaw)
+        XCTAssertEqual(stretched.pitch, origin.pitch)
+        XCTAssertEqual(stretched.target, origin.target)
+    }
+
+    @MainActor
     func testUniverseDragIsDirectResponsiveAndUsesBothAxes() {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         let store = FocusSpaceStore(repository: JSONFocusMapRepository(fileURL: folder.appending(path: "map.json")))

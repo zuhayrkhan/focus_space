@@ -13,6 +13,8 @@ Selecting a node with descendants now animates the camera toward that complete b
 
 Selecting a leaf changes emphasis and opens its inspector without moving the camera. `Command-0` still returns to the canonical view, and **Frame Selected Branch** remains available explicitly.
 
+Trackpad pinch/stretch remains a direct camera zoom. Magnification and tap selection share one explicit simultaneous gesture composition, so empty-space deselection cannot suppress the trackpad recogniser.
+
 ## Global shape preference
 
 **Node shape** in the left sidebar is a persistent, app-wide preference. It applies immediately to every card while colour, glyph, urgency, and attention continue to carry their existing semantics.

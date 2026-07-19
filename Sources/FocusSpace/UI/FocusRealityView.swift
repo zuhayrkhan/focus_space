@@ -38,10 +38,13 @@ struct FocusRealityView: View {
             renderer.updateCamera(root: root, intent: store.cameraIntent, reduceMotion: reduceMotion)
             renderer.updateGuideOpacity(root: root, opacity: universeGuideOpacity)
         }
-        .gesture(selectionGesture.exclusively(before: emptySelectionGesture))
+        .gesture(
+            magnifyGesture.simultaneously(
+                with: selectionGesture.exclusively(before: emptySelectionGesture)
+            )
+        )
         .simultaneousGesture(renameGesture)
         .simultaneousGesture(moveGesture.exclusively(before: navigationGesture))
-        .simultaneousGesture(magnifyGesture)
         .simultaneousGesture(rotationGesture)
         .simultaneousGesture(hoverGesture)
         .contextMenu {
@@ -197,7 +200,7 @@ struct FocusRealityView: View {
     }
 
     private var magnifyGesture: some Gesture {
-        MagnifyGesture(minimumScaleDelta: 0.01)
+        MagnifyGesture(minimumScaleDelta: 0.002)
             .onChanged { value in
                 let origin = magnifyOrigin ?? store.cameraIntent.pose
                 if magnifyOrigin == nil { noteNavigationActivity(scheduleIdleReturn: false) }
