@@ -274,7 +274,7 @@ final class ExperienceFoundationTests: XCTestCase {
 
         XCTAssertEqual(entity.scale, unselectedScale)
         XCTAssertNotNil(entity.findEntity(named: "selection-haze-inner"))
-        XCTAssertNotNil(entity.findEntity(named: "selection-haze-middle"))
+        XCTAssertNil(entity.findEntity(named: "selection-haze-middle"))
         XCTAssertNotNil(entity.findEntity(named: "selection-haze-outer"))
         XCTAssertNil(entity.findEntity(named: "selection-halo"))
         XCTAssertNotNil(entity.findEntity(named: "kind-edge"))

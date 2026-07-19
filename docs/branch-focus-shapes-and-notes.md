@@ -31,7 +31,7 @@ The available visual languages are:
 
 Shape is intentionally not stored on individual nodes. RealityKit consumes the global rendering preference without adding presentation detail to the domain model.
 
-Selection uses three quiet translucent layers behind the node instead of a bright outline. Each layer follows the node's actual silhouette and colour, creating a soft haze around rectangles, ellipses, circles, and diamonds alike.
+Selection uses two quiet translucent layers behind the node instead of a bright outline. Both follow the node's actual silhouette and colour, creating a restrained haze around rectangles, ellipses, circles, and diamonds alike.
 
 ## Persistent inspector
 

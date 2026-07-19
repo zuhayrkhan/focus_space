@@ -517,30 +517,21 @@ final class RealityFocusRenderer {
         if item.isSelected {
             decorations.addChild(makeSilhouetteLayer(
                 style: style,
-                expansion: 0.14,
-                depth: 0.018,
+                expansion: 0.16,
+                depth: 0.016,
                 color: style.color.nsColor,
-                opacity: 0.22,
+                opacity: 0.13,
                 name: "selection-haze-inner",
                 z: -0.095
             ))
             decorations.addChild(makeSilhouetteLayer(
                 style: style,
-                expansion: 0.28,
-                depth: 0.014,
-                color: style.color.nsColor,
-                opacity: 0.10,
-                name: "selection-haze-middle",
-                z: -0.10
-            ))
-            decorations.addChild(makeSilhouetteLayer(
-                style: style,
-                expansion: 0.44,
+                expansion: 0.36,
                 depth: 0.010,
                 color: style.color.nsColor,
-                opacity: 0.045,
+                opacity: 0.035,
                 name: "selection-haze-outer",
-                z: -0.105
+                z: -0.102
             ))
         }
 
