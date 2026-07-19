@@ -7,8 +7,12 @@ Focus Space is a native macOS spatial workspace where depth represents attention
 Open `Package.swift` in Xcode and run the `FocusSpace` scheme, or use:
 
 ```sh
-swift run FocusSpace
+./Scripts/run-app.sh
 ```
+
+This builds and opens a proper macOS application bundle. The command returns to
+the shell immediately, and quitting Focus Space does not quit or interrupt
+Terminal.
 
 To create a launchable, ad-hoc signed app bundle:
 
@@ -20,7 +24,7 @@ open ".build/Focus Space.app"
 Launch a deterministic experience-review scene without touching personal autosave data:
 
 ```sh
-open ".build/Focus Space.app" --args --demo north-star
+./Scripts/run-app.sh --demo north-star
 ```
 
 Available demo slugs are `north-star`, `shallow`, `deep`, `dense`, `parked`, and `empty`.

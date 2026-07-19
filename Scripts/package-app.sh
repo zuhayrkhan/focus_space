@@ -10,6 +10,7 @@ swift build --package-path "$project_dir" --configuration "$configuration"
 mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources"
 cp "$executable" "$app_dir/Contents/MacOS/FocusSpace"
 cp "$project_dir/Resources/Info.plist" "$app_dir/Contents/Info.plist"
+cp "$project_dir/Resources/AppIcon.icns" "$app_dir/Contents/Resources/AppIcon.icns"
 codesign --force --deep --sign - "$app_dir"
 
 echo "$app_dir"

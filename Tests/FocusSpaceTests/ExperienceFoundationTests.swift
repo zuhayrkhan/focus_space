@@ -1,3 +1,4 @@
+import AppKit
 import RealityKit
 import XCTest
 @testable import FocusSpace
@@ -480,6 +481,35 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertEqual(stretched.yaw, origin.yaw)
         XCTAssertEqual(stretched.pitch, origin.pitch)
         XCTAssertEqual(stretched.target, origin.target)
+        XCTAssertEqual(TrackpadMagnificationBridge.scaleFactor(for: 0.25), 1.25)
+        XCTAssertEqual(TrackpadMagnificationBridge.scaleFactor(for: -0.2), 0.8)
+        XCTAssertEqual(TrackpadMagnificationBridge.scaleFactor(for: -9), 0.25)
+    }
+
+    @MainActor
+    func testTrackpadMagnificationInstallsANativeRecognizerOnTheWindow() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let attachment = MagnificationAttachmentView(frame: NSRect(x: 0, y: 0, width: 640, height: 600))
+        window.contentView?.addSubview(attachment)
+
+        let bridge = TrackpadMagnificationBridge(
+            onBegan: {},
+            onChanged: { _ in },
+            onEnded: { _ in },
+            onCancelled: {}
+        )
+        let coordinator = bridge.makeCoordinator()
+        coordinator.attach(to: attachment)
+
+        XCTAssertTrue(window.contentView?.gestureRecognizers.contains { $0 is NSMagnificationGestureRecognizer } == true)
+
+        coordinator.detach()
+        XCTAssertFalse(window.contentView?.gestureRecognizers.contains { $0 is NSMagnificationGestureRecognizer } == true)
     }
 
     @MainActor

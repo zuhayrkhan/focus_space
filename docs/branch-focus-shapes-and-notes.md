@@ -13,7 +13,7 @@ Selecting a node with descendants now animates the camera toward that complete b
 
 Selecting a leaf changes emphasis and opens its inspector without moving the camera. `Command-0` still returns to the canonical view, and **Frame Selected Branch** remains available explicitly.
 
-Trackpad pinch/stretch remains a direct camera zoom. Magnification and tap selection share one explicit simultaneous gesture composition, so empty-space deselection cannot suppress the trackpad recogniser.
+Trackpad pinch/stretch remains a direct camera zoom. A native macOS magnification recogniser is attached to the Reality canvas, bypassing SwiftUI's competing tap and drag gesture arena while leaving the sidebar and inspector unaffected.
 
 ## Global shape preference
 

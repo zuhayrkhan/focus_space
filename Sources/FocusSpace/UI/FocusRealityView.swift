@@ -38,11 +38,15 @@ struct FocusRealityView: View {
             renderer.updateCamera(root: root, intent: store.cameraIntent, reduceMotion: reduceMotion)
             renderer.updateGuideOpacity(root: root, opacity: universeGuideOpacity)
         }
-        .gesture(
-            magnifyGesture.simultaneously(
-                with: selectionGesture.exclusively(before: emptySelectionGesture)
+        .background {
+            TrackpadMagnificationBridge(
+                onBegan: beginMagnification,
+                onChanged: updateMagnification,
+                onEnded: endMagnification,
+                onCancelled: cancelMagnification
             )
-        )
+        }
+        .gesture(selectionGesture.exclusively(before: emptySelectionGesture))
         .simultaneousGesture(renameGesture)
         .simultaneousGesture(moveGesture.exclusively(before: navigationGesture))
         .simultaneousGesture(rotationGesture)
@@ -199,24 +203,34 @@ struct FocusRealityView: View {
             }
     }
 
-    private var magnifyGesture: some Gesture {
-        MagnifyGesture(minimumScaleDelta: 0.002)
-            .onChanged { value in
-                let origin = magnifyOrigin ?? store.cameraIntent.pose
-                if magnifyOrigin == nil { noteNavigationActivity(scheduleIdleReturn: false) }
-                magnifyOrigin = origin
-                renderer.previewCamera(
-                    pose: store.zoomCameraPose(by: value.magnification, from: origin),
-                    reduceMotion: reduceMotion
-                )
-            }
-            .onEnded { value in
-                if let origin = magnifyOrigin {
-                    store.setCameraPose(store.zoomCameraPose(by: value.magnification, from: origin))
-                }
-                magnifyOrigin = nil
-                noteNavigationActivity()
-            }
+    private func beginMagnification() {
+        magnifyOrigin = store.cameraIntent.pose
+        noteNavigationActivity(scheduleIdleReturn: false)
+    }
+
+    private func updateMagnification(factor: Double) {
+        let origin = magnifyOrigin ?? store.cameraIntent.pose
+        if magnifyOrigin == nil { beginMagnification() }
+        renderer.previewCamera(
+            pose: store.zoomCameraPose(by: factor, from: origin),
+            reduceMotion: reduceMotion
+        )
+    }
+
+    private func endMagnification(factor: Double) {
+        if let origin = magnifyOrigin {
+            store.setCameraPose(store.zoomCameraPose(by: factor, from: origin))
+        }
+        magnifyOrigin = nil
+        noteNavigationActivity()
+    }
+
+    private func cancelMagnification() {
+        if let origin = magnifyOrigin {
+            renderer.previewCamera(pose: origin, reduceMotion: reduceMotion)
+        }
+        magnifyOrigin = nil
+        noteNavigationActivity()
     }
 
     private var rotationGesture: some Gesture {
