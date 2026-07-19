@@ -24,12 +24,18 @@ Selection increases the emphasis of a branch; it no longer determines whether ot
 
 ## Spatial web
 
-The fixed rear-plane guide was replaced with a shallow volumetric web spanning the node attention range. Its nested rings occupy different Z depths and its spokes slope through the universe, so orbiting now reveals it as scene geometry.
+The fixed rear-plane guide was replaced with a shallow volumetric web. Its nested rings occupy different Z depths and its spokes slope away through the universe, so orbiting reveals it as scene geometry. The renderer dynamically positions the web behind the furthest-back visible node, with a safety gap. No part of the web can therefore appear in front of a card, regardless of the map's attention range.
 
-The **Universe Web** menu in the compact navigation strip persists one of five opacity settings: Hidden, Barely There, Subtle, Clear, or Strong. Subtle is the default. The renderer clamps the final opacity to a quiet maximum.
+The persistent **Universe web** opacity slider now lives directly in the left sidebar instead of the floating navigation strip. Its readout shows the literal rendered opacity, and the renderer clamps the final value to a quiet maximum.
 
-The former “FOCUS / YOU ARE HERE” caption has been removed. The small luminous origin remains as an unobtrusive orientation landmark.
+The former “FOCUS / YOU ARE HERE” caption and its luminous origin marker have both been removed.
+
+## Colour key and starfield
+
+A screen-space colour key now sits in the top-right corner by default. Because it is a SwiftUI overlay rather than RealityKit content, it remains fixed while the universe moves. Dragging the key toward another corner docks it there and persists the choice; the legend gesture is isolated from camera navigation.
+
+The starfield is wider, deeper, and denser at every quality level. It now fills the peripheral workspace during overview and orbit views instead of clustering around the original central composition.
 
 ## Acceptance
 
-Accepted live on 19 July 2026 in the signed release bundle using the expanded deep hierarchy. Empty-space deselection closed the inspector while preserving every hierarchy path. Arrange separated the full graph, framed all outer leaves, enabled Undo, and left attention unchanged. The web remained visibly three-dimensional during universe movement and responded immediately to every opacity preset.
+Accepted live on 19 July 2026 in the signed release bundle. Empty-space deselection closed the inspector while preserving every hierarchy path. Arrange separated the full graph, framed all outer leaves, enabled Undo, and left attention unchanged. The web remained visibly three-dimensional while staying behind every card. The sidebar slider responded immediately, the denser starfield filled the window, and the colour key was docked between opposite corners without moving the universe beneath it.

@@ -109,7 +109,7 @@ final class ExperienceFoundationTests: XCTestCase {
 
         renderer.updateAmbient(root: root, reduceMotion: true)
         XCTAssertTrue(renderer.isAmbientMotionPaused)
-        XCTAssertNotNil(root.findEntity(named: "focus-origin"))
+        XCTAssertNil(root.findEntity(named: "focus-origin"))
         XCTAssertNotNil(root.findEntity(named: "orbital-guides"))
         XCTAssertNotNil(root.findEntity(named: "cool-stars"))
     }
@@ -120,12 +120,50 @@ final class ExperienceFoundationTests: XCTestCase {
         let root = renderer.makeScene()
         let guides = try XCTUnwrap(root.findEntity(named: "orbital-guides"))
         let bounds = guides.visualBounds(relativeTo: root)
-        XCTAssertGreaterThan(bounds.extents.z, 3.4, "The web should occupy the universe's Z volume")
+        XCTAssertGreaterThan(bounds.extents.z, 3.2, "The web should occupy the universe's Z volume")
 
         renderer.updateGuideOpacity(root: root, opacity: 0.24)
         XCTAssertEqual(guides.components[OpacityComponent.self]?.opacity, 0.24)
         renderer.updateGuideOpacity(root: root, opacity: 9)
         XCTAssertEqual(guides.components[OpacityComponent.self]?.opacity, 0.3, "Opacity must remain visually bounded")
+    }
+
+    @MainActor
+    func testUniverseWebAlwaysSitsBehindEveryNode() throws {
+        let renderer = RealityFocusRenderer(quality: .efficient)
+        let root = renderer.makeScene()
+        let items = [
+            FocusSceneSnapshot.Item(
+                id: UUID(), title: "Parked", kind: .someday, position: .zero,
+                attention: 0.08, parentID: nil, hierarchyDepth: 0, urgency: .none,
+                isEnabled: true, isSelected: false, isDimmed: false
+            ),
+            FocusSceneSnapshot.Item(
+                id: UUID(), title: "Now", kind: .project, position: .zero,
+                attention: 0.96, parentID: nil, hierarchyDepth: 0, urgency: .none,
+                isEnabled: true, isSelected: false, isDimmed: false
+            )
+        ]
+        renderer.reconcile(root: root, snapshot: FocusSceneSnapshot(items: items))
+
+        let guides = try XCTUnwrap(root.findEntity(named: "orbital-guides"))
+        let guideBounds = guides.visualBounds(relativeTo: root)
+        let forwardEdge = guideBounds.center.z + guideBounds.extents.z / 2
+        let furthestNodeZ = FocusVisualTokens.midnight.attentionFarZ
+            + Float(items.map(\.attention).min() ?? 0)
+            * (FocusVisualTokens.midnight.attentionNearZ - FocusVisualTokens.midnight.attentionFarZ)
+        XCTAssertLessThan(forwardEdge, furthestNodeZ)
+    }
+
+    @MainActor
+    func testStarfieldFillsAWideBackgroundVolume() throws {
+        let renderer = RealityFocusRenderer(quality: .efficient)
+        let root = renderer.makeScene()
+        let stars = try XCTUnwrap(root.findEntity(named: "cool-stars"))
+        let bounds = stars.visualBounds(relativeTo: root)
+        XCTAssertGreaterThan(bounds.extents.x, 20)
+        XCTAssertGreaterThan(bounds.extents.y, 11)
+        XCTAssertGreaterThan(bounds.extents.z, 4)
     }
 
     @MainActor

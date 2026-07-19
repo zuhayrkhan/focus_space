@@ -2,13 +2,14 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var store: FocusSpaceStore
+    @AppStorage("universeGuideOpacity") private var universeGuideOpacity = 0.08
 
     var body: some View {
         NavigationSplitView {
             sidebar
         } detail: {
             HStack(spacing: 0) {
-                FocusRealityView(store: store)
+                FocusRealityView(store: store, universeGuideOpacity: $universeGuideOpacity)
                 if store.selection != nil { NodeInspector(store: store) }
             }
             .overlay(alignment: .top) { searchField }
@@ -53,6 +54,20 @@ struct ContentView: View {
                 }
                 .buttonStyle(.plain)
             }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Label("Universe web", systemImage: "circle.grid.3x3")
+                    Spacer()
+                    Text("\(Int((universeGuideOpacity * 100).rounded()))%")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+                Slider(value: $universeGuideOpacity, in: 0...0.22, step: 0.02)
+                    .accessibilityLabel("Universe web opacity")
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 6)
             Spacer()
             Menu {
                 Button("Personal space") { store.preview(nil) }

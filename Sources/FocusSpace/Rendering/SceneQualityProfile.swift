@@ -7,9 +7,9 @@ enum SceneQualityProfile: String, CaseIterable, Sendable {
 
     var starCount: Int {
         switch self {
-        case .efficient: 48
-        case .balanced: 96
-        case .cinematic: 160
+        case .efficient: 84
+        case .balanced: 168
+        case .cinematic: 280
         }
     }
 

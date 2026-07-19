@@ -3,8 +3,9 @@ import SwiftUI
 
 struct FocusRealityView: View {
     @ObservedObject var store: FocusSpaceStore
+    @Binding var universeGuideOpacity: Double
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("universeGuideOpacity") private var universeGuideOpacity = 0.08
+    @AppStorage("nodeLegendCorner") private var legendCornerRaw = LegendCorner.topTrailing.rawValue
     @State private var renderer = RealityFocusRenderer()
     @State private var dragOrigins: [UUID: SpatialPoint] = [:]
     @State private var dragAttentionOrigins: [UUID: Double] = [:]
@@ -16,6 +17,10 @@ struct FocusRealityView: View {
     @State private var controlsVisible = true
     @State private var controlsTask: Task<Void, Never>?
     @State private var idleReturnTask: Task<Void, Never>?
+    @State private var isLegendInteracting = false
+    @State private var navigationStartedOnLegend = false
+    @State private var canvasSize = CGSize.zero
+    @GestureState private var legendDragOffset = CGSize.zero
 
     var body: some View {
         RealityView { content in
@@ -55,7 +60,13 @@ struct FocusRealityView: View {
                 .foregroundStyle(.secondary)
                 .padding(14)
         }
+        .overlay(alignment: legendCorner.alignment) { nodeLegend }
         .overlay(alignment: .bottom) { navigationControls }
+        .onGeometryChange(for: CGSize.self) { proxy in
+            proxy.size
+        } action: { newSize in
+            canvasSize = newSize
+        }
         .onAppear { noteNavigationActivity() }
         .onDisappear {
             controlsTask?.cancel()
@@ -144,6 +155,14 @@ struct FocusRealityView: View {
     private var navigationGesture: some Gesture {
         DragGesture(minimumDistance: 2)
             .onChanged { value in
+                if cameraDragOrigin == nil,
+                   legendCorner.contains(value.startLocation, in: canvasSize) {
+                    navigationStartedOnLegend = true
+                }
+                guard !isLegendInteracting, !navigationStartedOnLegend else {
+                    cameraDragOrigin = nil
+                    return
+                }
                 let origin = cameraDragOrigin ?? store.cameraIntent.pose
                 if cameraDragOrigin == nil { noteNavigationActivity(scheduleIdleReturn: false) }
                 cameraDragOrigin = origin
@@ -155,6 +174,11 @@ struct FocusRealityView: View {
                 renderer.previewCamera(pose: pose, reduceMotion: reduceMotion)
             }
             .onEnded { value in
+                defer { navigationStartedOnLegend = false }
+                guard !isLegendInteracting, !navigationStartedOnLegend else {
+                    cameraDragOrigin = nil
+                    return
+                }
                 if let origin = cameraDragOrigin {
                     store.setCameraPose(store.orbitCameraPose(
                         horizontal: value.translation.width,
@@ -232,17 +256,6 @@ struct FocusRealityView: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 6)
             Divider().frame(height: 22)
-            Menu("Universe web", systemImage: "circle.grid.3x3") {
-                Picker("Web opacity", selection: $universeGuideOpacity) {
-                    Text("Hidden").tag(0.0)
-                    Text("Barely there").tag(0.04)
-                    Text("Subtle").tag(0.08)
-                    Text("Clear").tag(0.14)
-                    Text("Strong").tag(0.22)
-                }
-            }
-            .labelStyle(.iconOnly)
-            .menuStyle(.borderlessButton)
             Button("Zoom out", systemImage: "minus.magnifyingglass") {
                 store.zoomCamera(by: 0.84, animated: true)
                 noteNavigationActivity()
@@ -277,6 +290,66 @@ struct FocusRealityView: View {
             else { noteNavigationActivity() }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: controlsVisible)
+    }
+
+    private var nodeLegend: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Image(systemName: "circle.grid.2x2")
+                Text("COLOUR KEY")
+                Spacer(minLength: 8)
+                Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                    .foregroundStyle(.tertiary)
+            }
+            .font(.caption2.weight(.semibold))
+            ForEach(FocusNodeKind.allCases) { kind in
+                let style = NodeVisualStyle.resolve(
+                    kind: kind,
+                    attention: 0.82,
+                    hierarchyDepth: 0,
+                    urgency: .none,
+                    isEnabled: true
+                )
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(style.color.color)
+                        .frame(width: 9, height: 9)
+                        .overlay { Circle().stroke(.white.opacity(0.48), lineWidth: 0.6) }
+                    Text(kind.displayName)
+                        .font(.caption)
+                }
+            }
+        }
+        .padding(11)
+        .frame(width: 176)
+        .background(.ultraThinMaterial, in: .rect(cornerRadius: 12))
+        .overlay { RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.10)) }
+        .shadow(color: .black.opacity(0.20), radius: 14, y: 7)
+        .padding(.horizontal, 14)
+        .padding(.top, 14)
+        .padding(.bottom, legendCorner.isBottom ? 46 : 14)
+        .offset(legendDragOffset)
+        .gesture(
+            DragGesture(minimumDistance: 4)
+                .onChanged { _ in isLegendInteracting = true }
+                .updating($legendDragOffset) { value, offset, _ in
+                    offset = value.translation
+                }
+                .onEnded { value in
+                    legendCornerRaw = legendCorner
+                        .moved(by: value.translation)
+                        .rawValue
+                    Task { @MainActor in
+                        await Task.yield()
+                        isLegendInteracting = false
+                    }
+                }
+        )
+        .help("Drag the colour key toward any corner to dock it there")
+    }
+
+    private var legendCorner: LegendCorner {
+        LegendCorner(rawValue: legendCornerRaw) ?? .topTrailing
     }
 
     private func noteNavigationActivity(scheduleIdleReturn: Bool = true) {
@@ -334,6 +407,73 @@ struct FocusRealityView: View {
             candidate = current.parent
         }
         return nil
+    }
+}
+
+private enum LegendCorner: String {
+    case topLeading
+    case topTrailing
+    case bottomLeading
+    case bottomTrailing
+
+    var alignment: Alignment {
+        switch self {
+        case .topLeading: .topLeading
+        case .topTrailing: .topTrailing
+        case .bottomLeading: .bottomLeading
+        case .bottomTrailing: .bottomTrailing
+        }
+    }
+
+    var isBottom: Bool {
+        switch self {
+        case .bottomLeading, .bottomTrailing: true
+        case .topLeading, .topTrailing: false
+        }
+    }
+
+    func contains(_ point: CGPoint, in size: CGSize) -> Bool {
+        guard size.width > 0, size.height > 0 else { return false }
+        let horizontalInset: CGFloat = 210
+        let verticalInset: CGFloat = isBottom ? 205 : 175
+        let isInHorizontalRegion = switch self {
+        case .topLeading, .bottomLeading: point.x <= horizontalInset
+        case .topTrailing, .bottomTrailing: point.x >= size.width - horizontalInset
+        }
+        let isInVerticalRegion = switch self {
+        case .topLeading, .topTrailing: point.y <= verticalInset
+        case .bottomLeading, .bottomTrailing: point.y >= size.height - verticalInset
+        }
+        return isInHorizontalRegion && isInVerticalRegion
+    }
+
+    func moved(by translation: CGSize) -> Self {
+        let isLeading: Bool = if translation.width < -70 {
+            true
+        } else if translation.width > 70 {
+            false
+        } else {
+            switch self {
+            case .topLeading, .bottomLeading: true
+            case .topTrailing, .bottomTrailing: false
+            }
+        }
+        let isTop: Bool = if translation.height < -70 {
+            true
+        } else if translation.height > 70 {
+            false
+        } else {
+            switch self {
+            case .topLeading, .topTrailing: true
+            case .bottomLeading, .bottomTrailing: false
+            }
+        }
+        return switch (isLeading, isTop) {
+        case (true, true): .topLeading
+        case (false, true): .topTrailing
+        case (true, false): .bottomLeading
+        default: .bottomTrailing
+        }
     }
 }
 
