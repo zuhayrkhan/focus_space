@@ -24,7 +24,7 @@ Every pose is bounded to preserve orientation: target travel, orbit angles, and 
 
 The bottom control strip fades after four seconds and returns on interaction. A free camera gently returns after 45 idle seconds only when nothing is selected or being edited. A framed branch never recentres itself. Reduce Motion changes programmatic moves to immediate transforms and pauses ambient orbit.
 
-Node dragging and universe dragging are exclusive gestures, so camera navigation cannot accidentally move a node. The active node and camera receive immediate transforms during a gesture, while reconciliation updates only changed visuals and relationship meshes. Framing and every camera operation leave `FocusMap` unchanged; this is enforced by tests.
+Node dragging and universe dragging are exclusive gestures, so camera navigation cannot accidentally move a node. The active node and camera receive immediate RealityKit transforms during a gesture, while reconciliation updates only changed visuals and relationship meshes. Transient movement does not publish through the SwiftUI store or refresh an open inspector; one final pose or model change is committed on release. Framing and every camera operation leave `FocusMap` unchanged; this is enforced by tests.
 
 ## Review checklist
 

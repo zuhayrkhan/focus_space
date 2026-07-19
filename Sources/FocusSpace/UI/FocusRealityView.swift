@@ -6,6 +6,9 @@ struct FocusRealityView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var renderer = RealityFocusRenderer()
     @State private var dragOrigins: [UUID: SpatialPoint] = [:]
+    @State private var dragAttentionOrigins: [UUID: Double] = [:]
+    @State private var dragSnapshots: [UUID: FocusSceneSnapshot] = [:]
+    @State private var depthDragIDs: Set<UUID> = []
     @State private var cameraDragOrigin: FocusCameraIntent.Pose?
     @State private var magnifyOrigin: FocusCameraIntent.Pose?
     @State private var rotationOrigin: FocusCameraIntent.Pose?
@@ -80,22 +83,50 @@ struct FocusRealityView: View {
             .onChanged { value in
                 guard let id = nodeID(from: value.entity), let node = store.map.node(id: id) else { return }
                 let origin = dragOrigins[id] ?? node.position
-                if dragOrigins[id] == nil { store.beginInteraction() }
+                let attentionOrigin = dragAttentionOrigins[id] ?? node.attention
+                if dragOrigins[id] == nil {
+                    store.beginInteraction()
+                    dragSnapshots[id] = store.sceneSnapshot
+                    dragAttentionOrigins[id] = node.attention
+                    if NSApp.currentEvent?.modifierFlags.contains(.option) == true {
+                        depthDragIDs.insert(id)
+                    }
+                }
                 dragOrigins[id] = origin
                 let dx = Double(value.translation.width / 115)
                 let dy = Double(-value.translation.height / 115)
-                if NSApp.currentEvent?.modifierFlags.contains(.option) == true {
-                    store.setAttention(id, to: node.attention + dy * 0.015)
-                } else {
-                    store.move(id, to: SpatialPoint(x: origin.x + dx, y: origin.y + dy))
-                }
+                let previewPosition = depthDragIDs.contains(id)
+                    ? origin
+                    : SpatialPoint(x: origin.x + dx, y: origin.y + dy)
+                let previewAttention = depthDragIDs.contains(id)
+                    ? min(max(attentionOrigin + dy * 0.015, 0), 1)
+                    : attentionOrigin
                 if let entity = nodeEntity(from: value.entity),
-                   let item = store.sceneSnapshot.items.first(where: { $0.id == id }) {
-                    renderer.previewNodeTransform(entity: entity, item: item)
+                   let snapshot = dragSnapshots[id],
+                   let base = snapshot.items.first(where: { $0.id == id }) {
+                    renderer.previewNodeDrag(
+                        entity: entity,
+                        item: previewItem(base, position: previewPosition, attention: previewAttention),
+                        snapshot: snapshot
+                    )
                 }
             }
             .onEnded { value in
-                if let id = nodeID(from: value.entity) { dragOrigins[id] = nil }
+                if let id = nodeID(from: value.entity),
+                   let origin = dragOrigins[id],
+                   let attentionOrigin = dragAttentionOrigins[id] {
+                    let dx = Double(value.translation.width / 115)
+                    let dy = Double(-value.translation.height / 115)
+                    if depthDragIDs.contains(id) {
+                        store.setAttention(id, to: attentionOrigin + dy * 0.015)
+                    } else {
+                        store.move(id, to: SpatialPoint(x: origin.x + dx, y: origin.y + dy))
+                    }
+                    dragOrigins[id] = nil
+                    dragAttentionOrigins[id] = nil
+                    dragSnapshots[id] = nil
+                    depthDragIDs.remove(id)
+                }
                 store.endInteraction()
             }
     }
@@ -104,16 +135,23 @@ struct FocusRealityView: View {
         DragGesture(minimumDistance: 2)
             .onChanged { value in
                 let origin = cameraDragOrigin ?? store.cameraIntent.pose
+                if cameraDragOrigin == nil { noteNavigationActivity(scheduleIdleReturn: false) }
                 cameraDragOrigin = origin
-                noteNavigationActivity(scheduleIdleReturn: false)
-                store.orbitCamera(
+                let pose = store.orbitCameraPose(
                     horizontal: value.translation.width,
                     vertical: value.translation.height,
                     from: origin
                 )
-                renderer.previewCamera(intent: store.cameraIntent, reduceMotion: reduceMotion)
+                renderer.previewCamera(pose: pose, reduceMotion: reduceMotion)
             }
-            .onEnded { _ in
+            .onEnded { value in
+                if let origin = cameraDragOrigin {
+                    store.setCameraPose(store.orbitCameraPose(
+                        horizontal: value.translation.width,
+                        vertical: value.translation.height,
+                        from: origin
+                    ))
+                }
                 cameraDragOrigin = nil
                 noteNavigationActivity()
             }
@@ -123,11 +161,17 @@ struct FocusRealityView: View {
         MagnifyGesture(minimumScaleDelta: 0.01)
             .onChanged { value in
                 let origin = magnifyOrigin ?? store.cameraIntent.pose
+                if magnifyOrigin == nil { noteNavigationActivity(scheduleIdleReturn: false) }
                 magnifyOrigin = origin
-                store.zoomCamera(by: value.magnification, from: origin)
-                noteNavigationActivity(scheduleIdleReturn: false)
+                renderer.previewCamera(
+                    pose: store.zoomCameraPose(by: value.magnification, from: origin),
+                    reduceMotion: reduceMotion
+                )
             }
-            .onEnded { _ in
+            .onEnded { value in
+                if let origin = magnifyOrigin {
+                    store.setCameraPose(store.zoomCameraPose(by: value.magnification, from: origin))
+                }
                 magnifyOrigin = nil
                 noteNavigationActivity()
             }
@@ -137,11 +181,25 @@ struct FocusRealityView: View {
         RotateGesture(minimumAngleDelta: .degrees(1))
             .onChanged { value in
                 let origin = rotationOrigin ?? store.cameraIntent.pose
+                if rotationOrigin == nil { noteNavigationActivity(scheduleIdleReturn: false) }
                 rotationOrigin = origin
-                store.orbitCamera(horizontal: value.rotation.degrees / 0.28, vertical: 0, from: origin)
-                noteNavigationActivity(scheduleIdleReturn: false)
+                renderer.previewCamera(
+                    pose: store.orbitCameraPose(
+                        horizontal: value.rotation.degrees / 0.28,
+                        vertical: 0,
+                        from: origin
+                    ),
+                    reduceMotion: reduceMotion
+                )
             }
-            .onEnded { _ in
+            .onEnded { value in
+                if let origin = rotationOrigin {
+                    store.setCameraPose(store.orbitCameraPose(
+                        horizontal: value.rotation.degrees / 0.28,
+                        vertical: 0,
+                        from: origin
+                    ))
+                }
                 rotationOrigin = nil
                 noteNavigationActivity()
             }
@@ -222,6 +280,28 @@ struct FocusRealityView: View {
 
     private func nodeID(from entity: Entity) -> UUID? {
         nodeEntity(from: entity).flatMap { UUID(uuidString: String($0.name.dropFirst(5))) }
+    }
+
+    private func previewItem(
+        _ item: FocusSceneSnapshot.Item,
+        position: SpatialPoint,
+        attention: Double
+    ) -> FocusSceneSnapshot.Item {
+        FocusSceneSnapshot.Item(
+            id: item.id,
+            title: item.title,
+            kind: item.kind,
+            position: position,
+            attention: attention,
+            parentID: item.parentID,
+            hierarchyDepth: item.hierarchyDepth,
+            urgency: item.urgency,
+            isEnabled: item.isEnabled,
+            isSelected: item.isSelected,
+            isDimmed: item.isDimmed,
+            isHovered: item.isHovered,
+            contextRole: item.contextRole
+        )
     }
 
     private func nodeEntity(from entity: Entity) -> Entity? {

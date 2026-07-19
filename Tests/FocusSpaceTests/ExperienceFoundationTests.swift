@@ -302,6 +302,20 @@ final class ExperienceFoundationTests: XCTestCase {
     }
 
     @MainActor
+    func testTransientCameraPoseDoesNotPublishThroughSelectedInspectorState() {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let store = FocusSpaceStore(repository: JSONFocusMapRepository(fileURL: folder.appending(path: "map.json")))
+        store.preview(.deepHierarchy)
+        store.select(store.map.nodes[1].id)
+        let intent = store.cameraIntent
+
+        let preview = store.orbitCameraPose(horizontal: 70, vertical: -45, from: intent.pose)
+
+        XCTAssertNotEqual(preview, intent.pose)
+        XCTAssertEqual(store.cameraIntent, intent, "A live camera preview must not refresh the selected inspector")
+    }
+
+    @MainActor
     func testCameraNavigationDoesNotMutateAttentionAndFramesWholeBranch() throws {
         let root = FocusNode(title: "Root", position: SpatialPoint(x: -2, y: 1), attention: 0.2)
         let child = FocusNode(title: "Child", position: SpatialPoint(x: 3, y: -2), attention: 0.8, parentID: root.id)
@@ -373,12 +387,30 @@ final class ExperienceFoundationTests: XCTestCase {
         let unrelatedName = "link-\(unrelatedRelationship.kind.rawValue)-\(unrelatedRelationship.sourceID)-\(unrelatedRelationship.targetID)"
         let unrelatedLink = try XCTUnwrap(root.findEntity(named: unrelatedName))
 
-        store.move(movedNode.id, to: SpatialPoint(x: movedNode.position.x + 1, y: movedNode.position.y - 0.5))
-        let updated = store.sceneSnapshot
-        let updatedItem = try XCTUnwrap(updated.items.first { $0.id == movedNode.id })
-        renderer.previewNodeTransform(entity: movedEntity, item: updatedItem)
+        let originalMap = store.map
+        let baseItem = try XCTUnwrap(initial.items.first { $0.id == movedNode.id })
+        let movedPosition = SpatialPoint(x: movedNode.position.x + 1, y: movedNode.position.y - 0.5)
+        let updatedItem = FocusSceneSnapshot.Item(
+            id: baseItem.id,
+            title: baseItem.title,
+            kind: baseItem.kind,
+            position: movedPosition,
+            attention: baseItem.attention,
+            parentID: baseItem.parentID,
+            hierarchyDepth: baseItem.hierarchyDepth,
+            urgency: baseItem.urgency,
+            isEnabled: baseItem.isEnabled,
+            isSelected: baseItem.isSelected,
+            isDimmed: baseItem.isDimmed,
+            isHovered: baseItem.isHovered,
+            contextRole: baseItem.contextRole
+        )
+        renderer.previewNodeDrag(entity: movedEntity, item: updatedItem, snapshot: initial)
         XCTAssertNotEqual(movedEntity.position, initialPosition, "The active tile should move before reconciliation")
+        XCTAssertEqual(store.map, originalMap, "A live tile preview must not refresh the selected inspector")
 
+        store.move(movedNode.id, to: movedPosition)
+        let updated = store.sceneSnapshot
         renderer.reconcile(root: root, snapshot: updated)
         XCTAssertTrue(root.findEntity(named: unrelatedName) === unrelatedLink, "Unchanged links should not be rebuilt during a drag")
         XCTAssertTrue(root.findEntity(named: "node-\(movedNode.id.uuidString)") === movedEntity)

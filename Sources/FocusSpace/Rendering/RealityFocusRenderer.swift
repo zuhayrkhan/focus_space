@@ -69,18 +69,27 @@ final class RealityFocusRenderer {
     }
 
     func updateCamera(root: Entity, intent: FocusCameraIntent, reduceMotion: Bool) {
-        guard lastCameraRevision != intent.revision,
-              let camera = root.findEntity(named: "focus-camera") else { return }
+        guard lastCameraRevision != intent.revision else { return }
         lastCameraRevision = intent.revision
+        applyCameraPose(root: root, pose: intent.pose, animated: intent.isAnimated, reduceMotion: reduceMotion)
+    }
+
+    private func applyCameraPose(
+        root: Entity,
+        pose: FocusCameraIntent.Pose,
+        animated: Bool,
+        reduceMotion: Bool
+    ) {
+        guard let camera = root.findEntity(named: "focus-camera") else { return }
         let range = Double(tokens.attentionNearZ - tokens.attentionFarZ)
         let target = SIMD3<Float>(
-            Float(intent.pose.target.x),
-            Float(intent.pose.target.y),
-            tokens.attentionFarZ + Float(intent.pose.targetAttention * range)
+            Float(pose.target.x),
+            Float(pose.target.y),
+            tokens.attentionFarZ + Float(pose.targetAttention * range)
         )
-        let yaw = Float(intent.pose.yaw * .pi / 180)
-        let pitch = Float(intent.pose.pitch * .pi / 180)
-        let distance = Float(intent.pose.distance)
+        let yaw = Float(pose.yaw * .pi / 180)
+        let pitch = Float(pose.pitch * .pi / 180)
+        let distance = Float(pose.distance)
         let offset = SIMD3<Float>(
             sin(yaw) * cos(pitch) * distance,
             sin(pitch) * distance,
@@ -91,22 +100,32 @@ final class RealityFocusRenderer {
         let orientation = simd_quatf(from: SIMD3<Float>(0, 0, -1), to: direction)
         let transform = Transform(scale: .one, rotation: orientation, translation: position)
         camera.stopAllAnimations(recursive: false)
-        if intent.isAnimated, !reduceMotion {
+        if animated, !reduceMotion {
             camera.move(to: transform, relativeTo: root, duration: 0.58, timingFunction: .easeInOut)
         } else {
             camera.transform = transform
         }
     }
 
-    func previewCamera(intent: FocusCameraIntent, reduceMotion: Bool) {
+    func previewCamera(pose: FocusCameraIntent.Pose, reduceMotion: Bool) {
         guard let sceneRoot else { return }
-        updateCamera(root: sceneRoot, intent: intent, reduceMotion: reduceMotion)
+        applyCameraPose(root: sceneRoot, pose: pose, animated: false, reduceMotion: reduceMotion)
     }
 
-    func previewNodeTransform(entity: Entity, item: FocusSceneSnapshot.Item) {
+    func previewNodeDrag(
+        entity: Entity,
+        item: FocusSceneSnapshot.Item,
+        snapshot: FocusSceneSnapshot
+    ) {
         entity.position = position(for: item)
         let depthScale = Float(0.78 + item.attention * 0.24)
         entity.scale = SIMD3<Float>(repeating: depthScale)
+        guard let sceneRoot else { return }
+        let preview = FocusSceneSnapshot(
+            items: snapshot.items.map { $0.id == item.id ? item : $0 },
+            relationships: snapshot.relationships
+        )
+        reconcileRelationships(root: sceneRoot, snapshot: preview)
     }
 
     private func makeCamera() -> PerspectiveCamera {

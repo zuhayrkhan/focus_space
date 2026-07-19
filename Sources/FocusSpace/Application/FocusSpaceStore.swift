@@ -113,16 +113,31 @@ final class FocusSpaceStore: ObservableObject {
     }
 
     func orbitCamera(horizontal: Double, vertical: Double, from origin: FocusCameraIntent.Pose? = nil) {
+        setCameraPose(orbitCameraPose(horizontal: horizontal, vertical: vertical, from: origin))
+    }
+
+    func orbitCameraPose(
+        horizontal: Double,
+        vertical: Double,
+        from origin: FocusCameraIntent.Pose? = nil
+    ) -> FocusCameraIntent.Pose {
         var pose = origin ?? cameraIntent.pose
         pose.yaw -= horizontal * 0.28
         pose.pitch += vertical * 0.22
-        setCameraPose(pose)
+        return pose.bounded()
     }
 
     func zoomCamera(by factor: Double, from origin: FocusCameraIntent.Pose? = nil, animated: Bool = false) {
+        setCameraPose(zoomCameraPose(by: factor, from: origin), animated: animated)
+    }
+
+    func zoomCameraPose(
+        by factor: Double,
+        from origin: FocusCameraIntent.Pose? = nil
+    ) -> FocusCameraIntent.Pose {
         var pose = origin ?? cameraIntent.pose
         pose.distance /= min(max(factor, 0.25), 4)
-        setCameraPose(pose, animated: animated)
+        return pose.bounded()
     }
 
     func frameSelection() {
