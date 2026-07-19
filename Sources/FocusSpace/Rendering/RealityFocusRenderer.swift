@@ -68,6 +68,13 @@ final class RealityFocusRenderer {
         }
     }
 
+    func updateGuideOpacity(root: Entity, opacity: Double) {
+        guard let guides = root.findEntity(named: "orbital-guides") else { return }
+        let value = Float(min(max(opacity, 0), 0.3))
+        guard guides.components[OpacityComponent.self]?.opacity != value else { return }
+        guides.components.set(OpacityComponent(opacity: value))
+    }
+
     func updateCamera(root: Entity, intent: FocusCameraIntent, reduceMotion: Bool) {
         guard lastCameraRevision != intent.revision else { return }
         lastCameraRevision = intent.revision
@@ -223,22 +230,6 @@ final class RealityFocusRenderer {
             origin.addChild(ray)
         }
 
-        let labelMesh = MeshResource.generateText(
-            "FOCUS\nYOU ARE HERE",
-            extrusionDepth: 0.001,
-            font: .systemFont(ofSize: 0.085, weight: .semibold),
-            containerFrame: CGRect(x: 0, y: 0, width: 1.1, height: 0.3),
-            alignment: .center,
-            lineBreakMode: .byWordWrapping
-        )
-        let label = ModelEntity(
-            mesh: labelMesh,
-            materials: [UnlitMaterial(color: tokens.focusCore.nsColor)]
-        )
-        label.position = SIMD3<Float>(-0.55, 0.2, 0.02)
-        label.components.set(OpacityComponent(opacity: 0.82))
-        origin.addChild(label)
-
         let focusLight = PointLight()
         focusLight.light.color = tokens.focusCore.nsColor
         focusLight.light.intensity = 5_200
@@ -296,7 +287,7 @@ final class RealityFocusRenderer {
         entity.position = position(for: item)
         guard needsVisualUpdate(from: previous, to: item) else { return }
         let contextOpacity: Float = switch item.contextRole {
-        case .subdued: 0.34
+        case .subdued: 0.50
         case .none, .branch, .direct: 1
         }
         entity.components.set(OpacityComponent(opacity: item.isDimmed ? 0.06 : style.opacity * contextOpacity))
@@ -599,8 +590,8 @@ final class RealityFocusRenderer {
 
     private func relationshipOpacity(_ relationship: FocusSceneSnapshot.Relationship) -> Float {
         let emphasis: Float = switch relationship.emphasis {
-        case .subdued: 0.08
-        case .standard: 0.24
+        case .subdued: 0.18
+        case .standard: 0.30
         case .branch: 0.42
         case .direct: 0.72
         }
@@ -694,24 +685,37 @@ final class RealityFocusRenderer {
     private func makeOrbitalGuides() throws -> ModelEntity {
         var positions: [SIMD3<Float>] = []
         var indices: [UInt32] = []
-        let ringSizes: [(Float, Float)] = [(2.2, 0.68), (3.4, 1.16), (4.8, 1.72), (6.3, 2.35)]
+        let rings: [(x: Float, y: Float, z: Float)] = [
+            (2.2, 0.68, 0.72),
+            (3.4, 1.16, -0.35),
+            (4.8, 1.72, -1.48),
+            (6.3, 2.35, -2.62)
+        ]
         let segments = quality.guideSegmentCount
         let thickness: Float = quality == .efficient ? 0.008 : 0.011
 
-        for (ringIndex, size) in ringSizes.enumerated() {
+        for ring in rings {
             for segment in 0..<segments {
                 let startAngle = Float(segment) / Float(segments) * .pi * 2
                 let endAngle = Float(segment + 1) / Float(segments) * .pi * 2
-                let start = SIMD3<Float>(cos(startAngle) * size.0, sin(startAngle) * size.1 - 0.2, -2.98 - Float(ringIndex) * 0.05)
-                let end = SIMD3<Float>(cos(endAngle) * size.0, sin(endAngle) * size.1 - 0.2, -2.98 - Float(ringIndex) * 0.05)
+                let start = SIMD3<Float>(
+                    cos(startAngle) * ring.x,
+                    sin(startAngle) * ring.y - 0.2,
+                    ring.z + sin(startAngle * 2) * 0.055
+                )
+                let end = SIMD3<Float>(
+                    cos(endAngle) * ring.x,
+                    sin(endAngle) * ring.y - 0.2,
+                    ring.z + sin(endAngle * 2) * 0.055
+                )
                 appendLineQuad(from: start, to: end, thickness: thickness, positions: &positions, indices: &indices)
             }
         }
 
         for spoke in 0..<12 {
             let angle = Float(spoke) / 12 * .pi * 2
-            let start = SIMD3<Float>(cos(angle) * 0.4, sin(angle) * 0.12 - 0.2, -3.16)
-            let end = SIMD3<Float>(cos(angle) * 6.3, sin(angle) * 2.35 - 0.2, -3.16)
+            let start = SIMD3<Float>(cos(angle) * 0.4, sin(angle) * 0.12 - 0.2, 1.05)
+            let end = SIMD3<Float>(cos(angle) * 6.3, sin(angle) * 2.35 - 0.2, -2.68)
             appendLineQuad(from: start, to: end, thickness: thickness * 0.7, positions: &positions, indices: &indices)
         }
 
@@ -721,9 +725,10 @@ final class RealityFocusRenderer {
         let mesh = try MeshResource.generate(from: [descriptor])
         var material = UnlitMaterial(color: tokens.focusBlue.nsColor)
         material.faceCulling = .none
-        material.blending = .transparent(opacity: 0.12)
+        material.blending = .transparent(opacity: .init(scale: 1))
         let guides = ModelEntity(mesh: mesh, materials: [material])
         guides.name = "orbital-guides"
+        guides.components.set(OpacityComponent(opacity: 0.08))
         return guides
     }
 

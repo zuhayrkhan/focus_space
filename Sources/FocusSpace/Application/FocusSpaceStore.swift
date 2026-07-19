@@ -46,6 +46,7 @@ final class FocusSpaceStore: ObservableObject {
     var canRedo: Bool { !redoMaps.isEmpty }
     var isPreviewingDemo: Bool { demoScene != nil }
     var canFrameSelection: Bool { selection != nil }
+    var canArrange: Bool { map.nodes.count > 1 }
 
     var sceneSnapshot: FocusSceneSnapshot {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -228,6 +229,40 @@ final class FocusSpaceStore: ObservableObject {
     func shiftAttention(_ id: UUID, by delta: Double) {
         guard let node = map.node(id: id) else { return }
         setAttention(id, to: node.attention + delta)
+    }
+
+    func arrangeMindMap() {
+        let positions = MindMapArranger.positions(for: map)
+        mutate { map in
+            for index in map.nodes.indices {
+                guard let position = positions[map.nodes[index].id] else { continue }
+                map.nodes[index].move(to: position)
+            }
+        }
+        frameEntireMap()
+    }
+
+    private func frameEntireMap() {
+        guard !map.nodes.isEmpty else { return }
+        let minX = map.nodes.map(\.position.x).min() ?? 0
+        let maxX = map.nodes.map(\.position.x).max() ?? 0
+        let minY = map.nodes.map(\.position.y).min() ?? 0
+        let maxY = map.nodes.map(\.position.y).max() ?? 0
+        let attention = map.nodes.map(\.attention).reduce(0, +) / Double(map.nodes.count)
+        let span = max(maxX - minX, (maxY - minY) * 1.6)
+        let pose = FocusCameraIntent.Pose(
+            target: SpatialPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2),
+            targetAttention: attention,
+            yaw: 0,
+            pitch: 0,
+            distance: min(max(7 + span * 0.72, 9.8), 18)
+        ).bounded()
+        cameraIntent = FocusCameraIntent(
+            pose: pose,
+            mode: .overview,
+            revision: cameraIntent.revision + 1,
+            isAnimated: true
+        )
     }
 
     func setKind(_ id: UUID, to kind: FocusNodeKind) {

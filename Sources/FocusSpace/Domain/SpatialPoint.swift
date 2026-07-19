@@ -1,6 +1,6 @@
 import Foundation
 
-struct SpatialPoint: Codable, Equatable, Sendable {
+struct SpatialPoint: Codable, Equatable, Hashable, Sendable {
     var x: Double
     var y: Double
 

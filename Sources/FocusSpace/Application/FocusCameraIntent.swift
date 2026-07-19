@@ -4,6 +4,7 @@ struct FocusCameraIntent: Equatable, Sendable {
     enum Mode: Equatable, Sendable {
         case canonical
         case free
+        case overview
         case framed(UUID)
     }
 
@@ -31,7 +32,7 @@ struct FocusCameraIntent: Equatable, Sendable {
                 targetAttention: min(max(targetAttention, 0), 1),
                 yaw: min(max(yaw, -55), 55),
                 pitch: min(max(pitch, -34), 34),
-                distance: min(max(distance, 4.2), 14.5)
+                distance: min(max(distance, 4.2), 18)
             )
         }
     }

@@ -4,6 +4,7 @@ import SwiftUI
 struct FocusRealityView: View {
     @ObservedObject var store: FocusSpaceStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("universeGuideOpacity") private var universeGuideOpacity = 0.08
     @State private var renderer = RealityFocusRenderer()
     @State private var dragOrigins: [UUID: SpatialPoint] = [:]
     @State private var dragAttentionOrigins: [UUID: Double] = [:]
@@ -25,8 +26,9 @@ struct FocusRealityView: View {
             renderer.reconcile(root: root, snapshot: store.sceneSnapshot)
             renderer.updateAmbient(root: root, reduceMotion: reduceMotion)
             renderer.updateCamera(root: root, intent: store.cameraIntent, reduceMotion: reduceMotion)
+            renderer.updateGuideOpacity(root: root, opacity: universeGuideOpacity)
         }
-        .gesture(selectionGesture)
+        .gesture(selectionGesture.exclusively(before: emptySelectionGesture))
         .simultaneousGesture(renameGesture)
         .simultaneousGesture(moveGesture.exclusively(before: navigationGesture))
         .simultaneousGesture(magnifyGesture)
@@ -74,6 +76,14 @@ struct FocusRealityView: View {
             .targetedToAnyEntity()
             .onEnded { value in
                 if let id = nodeID(from: value.entity) { store.beginRenaming(id) }
+            }
+    }
+
+    private var emptySelectionGesture: some Gesture {
+        SpatialTapGesture(count: 1)
+            .onEnded { _ in
+                store.hover(nil)
+                store.select(nil)
             }
     }
 
@@ -222,6 +232,17 @@ struct FocusRealityView: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 6)
             Divider().frame(height: 22)
+            Menu("Universe web", systemImage: "circle.grid.3x3") {
+                Picker("Web opacity", selection: $universeGuideOpacity) {
+                    Text("Hidden").tag(0.0)
+                    Text("Barely there").tag(0.04)
+                    Text("Subtle").tag(0.08)
+                    Text("Clear").tag(0.14)
+                    Text("Strong").tag(0.22)
+                }
+            }
+            .labelStyle(.iconOnly)
+            .menuStyle(.borderlessButton)
             Button("Zoom out", systemImage: "minus.magnifyingglass") {
                 store.zoomCamera(by: 0.84, animated: true)
                 noteNavigationActivity()

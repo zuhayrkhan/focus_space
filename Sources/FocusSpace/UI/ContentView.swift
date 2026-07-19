@@ -95,6 +95,8 @@ struct ContentView: View {
             Button("Undo", systemImage: "arrow.uturn.backward", action: store.undo).disabled(!store.canUndo)
             Button("Redo", systemImage: "arrow.uturn.forward", action: store.redo).disabled(!store.canRedo)
             Button("Add thought", systemImage: "plus") { store.addChild(to: nil) }
+            Button("Arrange mind map", systemImage: "wand.and.stars") { store.arrangeMindMap() }
+                .disabled(!store.canArrange)
             Button("Search", systemImage: "magnifyingglass") {
                 withAnimation(.spring(response: 0.35)) { store.isSearching.toggle() }
             }

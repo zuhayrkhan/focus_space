@@ -115,6 +115,20 @@ final class ExperienceFoundationTests: XCTestCase {
     }
 
     @MainActor
+    func testUniverseWebIsVolumetricAndItsOpacityIsAdjustable() throws {
+        let renderer = RealityFocusRenderer(quality: .efficient)
+        let root = renderer.makeScene()
+        let guides = try XCTUnwrap(root.findEntity(named: "orbital-guides"))
+        let bounds = guides.visualBounds(relativeTo: root)
+        XCTAssertGreaterThan(bounds.extents.z, 3.4, "The web should occupy the universe's Z volume")
+
+        renderer.updateGuideOpacity(root: root, opacity: 0.24)
+        XCTAssertEqual(guides.components[OpacityComponent.self]?.opacity, 0.24)
+        renderer.updateGuideOpacity(root: root, opacity: 9)
+        XCTAssertEqual(guides.components[OpacityComponent.self]?.opacity, 0.3, "Opacity must remain visually bounded")
+    }
+
+    @MainActor
     func testRendererUsesHaloWithoutChangingSelectedNodeScale() throws {
         let renderer = RealityFocusRenderer(quality: .efficient)
         let root = renderer.makeScene()
@@ -230,6 +244,13 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertEqual(snapshot.items.first { $0.id == leaf.id }?.contextRole, .branch)
         store.hover(nil)
         XCTAssertEqual(store.sceneSnapshot.items.first { $0.id == root.id }?.contextRole, .direct)
+
+        let selectedRelationshipCount = store.sceneSnapshot.relationships.count
+        store.select(nil)
+        snapshot = store.sceneSnapshot
+        XCTAssertEqual(snapshot.relationships.count, selectedRelationshipCount)
+        XCTAssertTrue(snapshot.relationships.allSatisfy { $0.emphasis == .standard })
+        XCTAssertTrue(snapshot.items.allSatisfy { $0.contextRole == .none })
     }
 
     @MainActor
@@ -272,6 +293,43 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertTrue(store.canUndo)
     }
 
+    @MainActor
+    func testArrangeMindMapSeparatesOverlapsPreservesDepthAndSupportsUndo() throws {
+        let timestamp = Date(timeIntervalSince1970: 1_800_000_000)
+        let root = FocusNode(title: "Root", kind: .project, position: .zero, attention: 0.2, createdAt: timestamp, updatedAt: timestamp)
+        let first = FocusNode(title: "First", kind: .group, position: .zero, attention: 0.9, parentID: root.id, createdAt: timestamp, updatedAt: timestamp)
+        let second = FocusNode(title: "Second", kind: .group, position: .zero, attention: 0.4, parentID: root.id, createdAt: timestamp, updatedAt: timestamp)
+        let leaf = FocusNode(title: "Leaf", position: .zero, attention: 0.7, parentID: first.id, createdAt: timestamp, updatedAt: timestamp)
+        let original = FocusMap(nodes: [root, first, second, leaf])
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let repository = JSONFocusMapRepository(fileURL: folder.appending(path: "map.json"))
+        try repository.save(original)
+        let store = FocusSpaceStore(repository: repository)
+        let attention = Dictionary(uniqueKeysWithValues: store.map.nodes.map { ($0.id, $0.attention) })
+
+        store.arrangeMindMap()
+
+        XCTAssertEqual(Set(store.map.nodes.map(\.position)).count, store.map.nodes.count)
+        XCTAssertGreaterThan(store.map.node(id: root.id)!.position.y, store.map.node(id: first.id)!.position.y)
+        XCTAssertGreaterThan(store.map.node(id: first.id)!.position.y, store.map.node(id: leaf.id)!.position.y)
+        XCTAssertGreaterThan(abs(store.map.node(id: first.id)!.position.x - store.map.node(id: second.id)!.position.x), 1.6)
+        XCTAssertTrue(store.map.nodes.allSatisfy { $0.attention == attention[$0.id] })
+        XCTAssertTrue(store.canUndo)
+        XCTAssertEqual(store.cameraIntent.mode, .overview)
+        XCTAssertGreaterThanOrEqual(store.cameraIntent.pose.distance, FocusCameraIntent.Pose.canonical.distance)
+
+        store.undo()
+        XCTAssertEqual(store.map, original)
+    }
+
+    func testArrangeMindMapUsesACompactGridForManyIndependentThoughts() {
+        let nodes = (0..<20).map { FocusNode(title: "Thought \($0)", position: .zero) }
+        let positions = MindMapArranger.positions(for: FocusMap(nodes: nodes))
+        XCTAssertEqual(Set(positions.values).count, nodes.count)
+        XCTAssertGreaterThan(Set(positions.values.map(\.y)).count, 2)
+        XCTAssertLessThanOrEqual(positions.values.map { abs($0.x) }.max() ?? 0, 4.4)
+    }
+
     func testCameraPoseAppliesSoftWorkspaceBounds() {
         let pose = FocusCameraIntent.Pose(
             target: SpatialPoint(x: 99, y: -99),
@@ -285,7 +343,7 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertEqual(pose.targetAttention, 1)
         XCTAssertEqual(pose.yaw, 55)
         XCTAssertEqual(pose.pitch, -34)
-        XCTAssertEqual(pose.distance, 14.5)
+        XCTAssertEqual(pose.distance, 18)
     }
 
     @MainActor

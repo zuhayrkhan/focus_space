@@ -32,6 +32,10 @@ struct FocusSpaceApp: App {
                     .disabled(!store.canRedo)
             }
             CommandMenu("View") {
+                Button("Arrange Mind Map", action: store.arrangeMindMap)
+                    .keyboardShortcut("l", modifiers: [.command, .shift])
+                    .disabled(!store.canArrange)
+                Divider()
                 Button("Frame Selected Branch", action: store.frameSelection)
                     .keyboardShortcut("f", modifiers: [.command, .shift])
                     .disabled(!store.canFrameSelection)

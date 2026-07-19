@@ -42,4 +42,10 @@ Captured after orbiting the framed deep hierarchy. Perspective and card planes e
 
 SHA-256: `c403837bb082b6fe2beb57a051964619648c9540336b45813051f0dd76d507c8`
 
+## `interaction-refinement-arranged.png`
+
+Captured from the signed release bundle after Ibrahim's interaction review. It records the arranged expanded hierarchy, automatic overview framing, retained relationships, removed focus caption, and the volumetric universe web at Subtle opacity.
+
+SHA-256: `cb9a41d5ecaffb8add174e9e2ba8d964c7fb8dcda637f5a397e18826ad5ecba8`
+
 The reference images are retained to support repeatable before/after review.
