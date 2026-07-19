@@ -21,6 +21,16 @@ struct VisualColor: Equatable, Sendable {
     var color: Color {
         Color(red: red, green: green, blue: blue, opacity: alpha)
     }
+
+    func interpolated(to other: VisualColor, fraction: Double) -> VisualColor {
+        let fraction = min(max(fraction, 0), 1)
+        return VisualColor(
+            red + (other.red - red) * fraction,
+            green + (other.green - green) * fraction,
+            blue + (other.blue - blue) * fraction,
+            alpha + (other.alpha - alpha) * fraction
+        )
+    }
 }
 
 struct FocusVisualTokens: Equatable, Sendable {

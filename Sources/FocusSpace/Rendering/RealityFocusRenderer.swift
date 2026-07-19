@@ -245,7 +245,8 @@ final class RealityFocusRenderer {
             urgency: item.urgency,
             isEnabled: item.isEnabled,
             shapePreference: shapePreference,
-            isExpanded: item.isSelected && !item.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            isExpanded: item.isSelected && !item.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            colorVariation: colorVariation(for: item.id)
         )
         entity.position = position(for: item)
         guard needsVisualUpdate(from: previous, to: item) else { return }
@@ -591,8 +592,16 @@ final class RealityFocusRenderer {
             urgency: item.urgency,
             isEnabled: item.isEnabled,
             shapePreference: shapePreference,
-            isExpanded: item.isSelected && !item.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            isExpanded: item.isSelected && !item.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            colorVariation: colorVariation(for: item.id)
         )
+    }
+
+    private func colorVariation(for id: UUID) -> Double {
+        let hash = id.uuidString.utf8.reduce(UInt64(14_695_981_039_346_656_037)) { partial, byte in
+            (partial ^ UInt64(byte)) &* 1_099_511_628_211
+        }
+        return Double(hash % 1_001) / 1_000
     }
 
     private func relationshipColor(_ relationship: FocusSceneSnapshot.Relationship) -> NSColor {

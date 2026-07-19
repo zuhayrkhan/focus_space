@@ -58,6 +58,39 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertLessThan(overdue.hierarchyOffset, near.hierarchyOffset)
     }
 
+    func testSemanticColourFamiliesVaryWithoutLosingTheirIdentity() {
+        for kind in FocusNodeKind.allCases {
+            let low = NodeVisualStyle.resolve(
+                kind: kind,
+                attention: 0.7,
+                hierarchyDepth: 0,
+                urgency: .none,
+                isEnabled: true,
+                colorVariation: 0
+            ).color
+            let high = NodeVisualStyle.resolve(
+                kind: kind,
+                attention: 0.7,
+                hierarchyDepth: 0,
+                urgency: .none,
+                isEnabled: true,
+                colorVariation: 1
+            ).color
+            XCTAssertNotEqual(low, high)
+        }
+
+        let green = NodeVisualStyle.resolve(
+            kind: .task,
+            attention: 0.7,
+            hierarchyDepth: 0,
+            urgency: .none,
+            isEnabled: true,
+            colorVariation: 1
+        ).color
+        XCTAssertGreaterThan(green.green, green.red)
+        XCTAssertGreaterThan(green.green, green.blue)
+    }
+
     func testGlobalShapePreferenceCreatesAConsistentVisualLanguage() {
         for preference in [NodeShapePreference.rounded, .capsule, .compact] {
             let styles = FocusNodeKind.allCases.map {

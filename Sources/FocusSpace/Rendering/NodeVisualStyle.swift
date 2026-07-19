@@ -30,7 +30,8 @@ struct NodeVisualStyle: Equatable, Sendable {
         urgency: FocusNodeUrgency,
         isEnabled: Bool,
         shapePreference: NodeShapePreference = .semantic,
-        isExpanded: Bool = false
+        isExpanded: Bool = false,
+        colorVariation: Double = 0.5
     ) -> Self {
         let attention = Float(min(max(attention, 0), 1))
         let family: (
@@ -39,18 +40,19 @@ struct NodeVisualStyle: Equatable, Sendable {
             Float,
             Float,
             VisualColor,
+            VisualColor,
             String
         ) = switch kind {
         case .project:
-            (.panel, 1.58, 0.68, 0.13, VisualColor(0.10, 0.35, 0.72), "◆")
+            (.panel, 1.58, 0.68, 0.13, VisualColor(0.07, 0.28, 0.62), VisualColor(0.10, 0.50, 0.78), "◆")
         case .group:
-            (.capsule, 1.42, 0.58, 0.25, VisualColor(0.34, 0.19, 0.68), "◇")
+            (.capsule, 1.42, 0.58, 0.25, VisualColor(0.28, 0.14, 0.58), VisualColor(0.48, 0.24, 0.72), "◇")
         case .task:
-            (.compact, 1.30, 0.52, 0.11, VisualColor(0.10, 0.43, 0.27), "✓")
+            (.compact, 1.30, 0.52, 0.11, VisualColor(0.07, 0.34, 0.20), VisualColor(0.12, 0.54, 0.36), "✓")
         case .reference:
-            (.note, 1.36, 0.56, 0.045, VisualColor(0.55, 0.36, 0.08), "▤")
+            (.note, 1.36, 0.56, 0.045, VisualColor(0.48, 0.27, 0.05), VisualColor(0.68, 0.43, 0.10), "▤")
         case .someday:
-            (.ghost, 1.34, 0.52, 0.24, VisualColor(0.28, 0.35, 0.40), "○")
+            (.ghost, 1.34, 0.52, 0.24, VisualColor(0.22, 0.29, 0.35), VisualColor(0.38, 0.44, 0.48), "○")
         }
 
         let preferredShape: (NodeSilhouette, Float, Float, Float) = switch shapePreference {
@@ -72,8 +74,8 @@ struct NodeVisualStyle: Equatable, Sendable {
             width: expandedWidth,
             height: expandedHeight,
             cornerRadius: preferredShape.3,
-            color: family.4,
-            glyph: isEnabled ? family.5 : "—",
+            color: family.4.interpolated(to: family.5, fraction: colorVariation),
+            glyph: isEnabled ? family.6 : "—",
             opacity: enabledMultiplier * (0.45 + attention * 0.55),
             saturation: (isEnabled ? 0.48 : 0.08) + attention * (isEnabled ? 0.52 : 0.12),
             emissiveIntensity: isEnabled ? 0.045 + attention * 0.22 : 0.015,
