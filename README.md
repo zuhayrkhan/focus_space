@@ -46,4 +46,5 @@ RealityKit types do not cross into the domain or application layers.
 - [Milestone 3 spatial relationships](docs/milestone-3-spatial-relationships.md)
 - [Milestone 4 camera navigation](docs/milestone-4-camera-navigation.md)
 - [Interaction refinements from Ibrahim's review](docs/interaction-refinements.md)
+- [Branch focus, shape preferences, and selected notes](docs/branch-focus-shapes-and-notes.md)
 - [Visual north star](docs/reference/focus-space-visual-north-star.png)

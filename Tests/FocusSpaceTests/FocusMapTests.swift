@@ -28,6 +28,7 @@ final class FocusMapTests: XCTestCase {
         let timestamp = Date(timeIntervalSince1970: 1_800_000_000)
         let node = FocusNode(
             title: "Explore depth",
+            notes: "Shown when this thought is selected.",
             kind: .reference,
             attention: 0.72,
             urgency: .overdue,
@@ -43,7 +44,8 @@ final class FocusMapTests: XCTestCase {
         let text = try String(contentsOf: repository.fileURL, encoding: .utf8)
         XCTAssertTrue(text.contains("\n"))
         XCTAssertTrue(text.contains("Explore depth"))
-        XCTAssertTrue(text.contains("\"version\" : 2"))
+        XCTAssertTrue(text.contains("\"version\" : 3"))
+        XCTAssertTrue(text.contains("Shown when this thought is selected."))
         XCTAssertTrue(text.contains("\"kind\" : \"reference\""))
         XCTAssertTrue(text.contains("\"urgency\" : \"overdue\""))
         XCTAssertTrue(text.contains("\"isEnabled\" : false"))
@@ -76,5 +78,6 @@ final class FocusMapTests: XCTestCase {
         XCTAssertEqual(migrated.nodes.first?.kind, .task)
         XCTAssertEqual(migrated.nodes.first?.urgency, FocusNodeUrgency.none)
         XCTAssertEqual(migrated.nodes.first?.isEnabled, true)
+        XCTAssertEqual(migrated.nodes.first?.notes, "")
     }
 }

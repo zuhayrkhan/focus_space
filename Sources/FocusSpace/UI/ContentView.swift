@@ -3,13 +3,18 @@ import SwiftUI
 struct ContentView: View {
     @ObservedObject var store: FocusSpaceStore
     @AppStorage("universeGuideOpacity") private var universeGuideOpacity = 0.08
+    @AppStorage("nodeShapePreference") private var nodeShapePreferenceRaw = NodeShapePreference.semantic.rawValue
 
     var body: some View {
         NavigationSplitView {
             sidebar
         } detail: {
             HStack(spacing: 0) {
-                FocusRealityView(store: store, universeGuideOpacity: $universeGuideOpacity)
+                FocusRealityView(
+                    store: store,
+                    universeGuideOpacity: $universeGuideOpacity,
+                    nodeShapePreference: NodeShapePreference(rawValue: nodeShapePreferenceRaw) ?? .semantic
+                )
                 if store.selection != nil { NodeInspector(store: store) }
             }
             .overlay(alignment: .top) { searchField }
@@ -65,6 +70,19 @@ struct ContentView: View {
                 .font(.caption)
                 Slider(value: $universeGuideOpacity, in: 0...0.22, step: 0.02)
                     .accessibilityLabel("Universe web opacity")
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 6)
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Node shape", systemImage: "rectangle.on.rectangle")
+                    .font(.caption)
+                Picker("Node shape", selection: $nodeShapePreferenceRaw) {
+                    ForEach(NodeShapePreference.allCases) { preference in
+                        Text(preference.displayName).tag(preference.rawValue)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
             }
             .padding(.horizontal, 12)
             .padding(.top, 6)

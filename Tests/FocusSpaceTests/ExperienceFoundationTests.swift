@@ -22,6 +22,7 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertEqual(Set(northStar.map(\.kind)), Set(FocusNodeKind.allCases))
         XCTAssertTrue(northStar.contains { $0.urgency == .overdue })
         XCTAssertTrue(northStar.contains { !$0.isEnabled })
+        XCTAssertFalse(DemoScene.deepHierarchy.map.nodes.first?.notes.isEmpty ?? true)
     }
 
     func testVisualLanguageUsesShapeGlyphAndIntensityAsWellAsColour() {
@@ -54,6 +55,40 @@ final class ExperienceFoundationTests: XCTestCase {
         let overdue = NodeVisualStyle.resolve(kind: .task, attention: 0.7, hierarchyDepth: 2, urgency: .overdue, isEnabled: true)
         XCTAssertEqual(overdue.urgencyGlyph, "!")
         XCTAssertLessThan(overdue.hierarchyOffset, near.hierarchyOffset)
+    }
+
+    func testGlobalShapePreferenceCreatesAConsistentVisualLanguage() {
+        for preference in [NodeShapePreference.rounded, .capsule, .compact] {
+            let styles = FocusNodeKind.allCases.map {
+                NodeVisualStyle.resolve(
+                    kind: $0,
+                    attention: 0.7,
+                    hierarchyDepth: 0,
+                    urgency: .none,
+                    isEnabled: true,
+                    shapePreference: preference
+                )
+            }
+            XCTAssertEqual(Set(styles.map(\.silhouette)).count, 1)
+            XCTAssertEqual(Set(styles.map(\.cornerRadius)).count, 1)
+            XCTAssertEqual(Set(styles.map(\.width)).count, 1)
+            XCTAssertEqual(Set(styles.map(\.height)).count, 1)
+            XCTAssertEqual(Set(styles.map { "\($0.color.red)-\($0.color.green)-\($0.color.blue)" }).count, FocusNodeKind.allCases.count)
+        }
+    }
+
+    func testNotesLayoutExpandsOnlyTheSelectedCard() {
+        let normal = NodeVisualStyle.resolve(
+            kind: .project, attention: 0.8, hierarchyDepth: 0,
+            urgency: .none, isEnabled: true, isExpanded: false
+        )
+        let expanded = NodeVisualStyle.resolve(
+            kind: .project, attention: 0.8, hierarchyDepth: 0,
+            urgency: .none, isEnabled: true, isExpanded: true
+        )
+        XCTAssertGreaterThan(expanded.width, normal.width)
+        XCTAssertGreaterThan(expanded.height, normal.height)
+        XCTAssertTrue(NodeNotesLayout.displayText(String(repeating: "context ", count: 30)).hasSuffix("…"))
     }
 
     func testLabelLayoutPreservesShortAndMultilingualTextAndTruncatesLongText() {
@@ -210,6 +245,50 @@ final class ExperienceFoundationTests: XCTestCase {
     }
 
     @MainActor
+    func testRendererExpandsSelectedNodeToShowNotesAndHonoursShapePreference() throws {
+        let renderer = RealityFocusRenderer(quality: .efficient)
+        let root = renderer.makeScene()
+        let id = UUID()
+        let base = FocusSceneSnapshot.Item(
+            id: id,
+            title: "Programme",
+            notes: "Bring the related work into one calm release.",
+            kind: .project,
+            position: .zero,
+            attention: 0.8,
+            parentID: nil,
+            hierarchyDepth: 0,
+            urgency: .none,
+            isEnabled: true,
+            isSelected: false,
+            isDimmed: false
+        )
+        renderer.reconcile(root: root, snapshot: FocusSceneSnapshot(items: [base]), shapePreference: .capsule)
+        let entity = try XCTUnwrap(root.findEntity(named: "node-\(id.uuidString)"))
+        let normalBounds = entity.visualBounds(relativeTo: entity)
+        XCTAssertNil(entity.findEntity(named: "node-notes"))
+
+        let selected = FocusSceneSnapshot.Item(
+            id: base.id,
+            title: base.title,
+            notes: base.notes,
+            kind: base.kind,
+            position: base.position,
+            attention: base.attention,
+            parentID: nil,
+            hierarchyDepth: 0,
+            urgency: .none,
+            isEnabled: true,
+            isSelected: true,
+            isDimmed: false
+        )
+        renderer.reconcile(root: root, snapshot: FocusSceneSnapshot(items: [selected]), shapePreference: .capsule)
+        let expandedBounds = entity.visualBounds(relativeTo: entity)
+        XCTAssertGreaterThan(expandedBounds.extents.y, normalBounds.extents.y)
+        XCTAssertNotNil(entity.findEntity(named: "node-notes"))
+    }
+
+    @MainActor
     func testRendererReconcilesEveryDeterministicFixture() throws {
         for scene in DemoScene.allCases {
             let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
@@ -322,11 +401,13 @@ final class ExperienceFoundationTests: XCTestCase {
         store.setKind(grandchild.id, to: .reference)
         store.setUrgency(grandchild.id, to: .overdue)
         store.setEnabled(grandchild.id, to: false)
+        store.setNotes(grandchild.id, to: "Evidence and context")
 
         let item = try XCTUnwrap(store.sceneSnapshot.items.first { $0.id == grandchild.id })
         XCTAssertEqual(item.hierarchyDepth, 2)
         XCTAssertEqual(item.kind, .reference)
         XCTAssertEqual(item.urgency, .overdue)
+        XCTAssertEqual(item.notes, "Evidence and context")
         XCTAssertFalse(item.isEnabled)
         XCTAssertTrue(store.canUndo)
     }
@@ -427,14 +508,23 @@ final class ExperienceFoundationTests: XCTestCase {
         store.panCamera(horizontal: 40, vertical: -30)
         XCTAssertEqual(store.map, originalMap)
         XCTAssertEqual(store.cameraIntent.mode, .free)
+        let angleBeforeSelection = store.cameraIntent.pose
 
         store.select(root.id)
-        store.frameSelection()
         XCTAssertEqual(store.cameraIntent.mode, .framed(root.id))
-        XCTAssertEqual(store.cameraIntent.pose.target.x, 0.5, accuracy: 0.001)
-        XCTAssertEqual(store.cameraIntent.pose.target.y, -0.5, accuracy: 0.001)
+        XCTAssertEqual(store.cameraIntent.pose.target.x, -0.25, accuracy: 0.001)
+        XCTAssertEqual(store.cameraIntent.pose.target.y, -0.05, accuracy: 0.001)
         XCTAssertEqual(store.cameraIntent.pose.targetAttention, 0.5, accuracy: 0.001)
+        XCTAssertEqual(store.cameraIntent.pose.yaw, angleBeforeSelection.yaw, accuracy: 0.001)
+        XCTAssertEqual(store.cameraIntent.pose.pitch, angleBeforeSelection.pitch, accuracy: 0.001)
+        XCTAssertLessThan(store.cameraIntent.pose.distance, angleBeforeSelection.distance)
         XCTAssertEqual(store.map, originalMap)
+
+        let framedBranch = store.cameraIntent
+        store.select(root.id)
+        XCTAssertEqual(store.cameraIntent, framedBranch, "Repeated selection should not keep zooming inward")
+        store.select(child.id)
+        XCTAssertEqual(store.cameraIntent, framedBranch, "A leaf selection should not move the camera")
 
         store.resetCamera()
         XCTAssertEqual(store.cameraIntent.mode, .canonical)

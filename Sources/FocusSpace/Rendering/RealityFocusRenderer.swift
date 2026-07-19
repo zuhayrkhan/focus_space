@@ -12,9 +12,10 @@ final class RealityFocusRenderer {
     private var lastCameraRevision: Int?
     private weak var sceneRoot: Entity?
     private var ambientController: AnimationPlaybackController?
-    private var nodeMeshes: [FocusNodeKind: MeshResource] = [:]
+    private var nodeMeshes: [String: MeshResource] = [:]
     private var frameMeshes: [String: MeshResource] = [:]
     private var relationshipKeys: [String: RelationshipRenderKey] = [:]
+    private var shapePreference: NodeShapePreference = .semantic
     private(set) var isAmbientMotionPaused = false
 
     init(
@@ -35,9 +36,17 @@ final class RealityFocusRenderer {
         return root
     }
 
-    func reconcile(root: Entity, snapshot: FocusSceneSnapshot) {
-        guard lastSnapshot != snapshot else { return }
-        let previousItems = Dictionary(uniqueKeysWithValues: (lastSnapshot?.items ?? []).map { ($0.id, $0) })
+    func reconcile(
+        root: Entity,
+        snapshot: FocusSceneSnapshot,
+        shapePreference: NodeShapePreference = .semantic
+    ) {
+        let shapeChanged = self.shapePreference != shapePreference
+        guard lastSnapshot != snapshot || shapeChanged else { return }
+        self.shapePreference = shapePreference
+        let previousItems = shapeChanged
+            ? [:]
+            : Dictionary(uniqueKeysWithValues: (lastSnapshot?.items ?? []).map { ($0.id, $0) })
 
         let desiredIDs = Set(snapshot.items.map { $0.id.uuidString })
         for child in root.children where child.name.hasPrefix("node-") {
@@ -213,7 +222,8 @@ final class RealityFocusRenderer {
             attention: 0.5,
             hierarchyDepth: 0,
             urgency: .none,
-            isEnabled: true
+            isEnabled: true,
+            shapePreference: shapePreference
         )
         let mesh = mesh(for: .task, style: style)
         let entity = ModelEntity(mesh: mesh, materials: [UnlitMaterial(color: .white)])
@@ -233,7 +243,9 @@ final class RealityFocusRenderer {
             attention: item.attention,
             hierarchyDepth: item.hierarchyDepth,
             urgency: item.urgency,
-            isEnabled: item.isEnabled
+            isEnabled: item.isEnabled,
+            shapePreference: shapePreference,
+            isExpanded: item.isSelected && !item.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         )
         entity.position = position(for: item)
         guard needsVisualUpdate(from: previous, to: item) else { return }
@@ -247,7 +259,7 @@ final class RealityFocusRenderer {
 
         guard let model = entity as? ModelEntity else { return }
         model.model?.mesh = mesh(for: item.kind, style: style)
-        if previous?.kind != item.kind { model.generateCollisionShapes(recursive: false) }
+        model.generateCollisionShapes(recursive: false)
         let color = style.color.nsColor.withSaturation(CGFloat(style.saturation))
         model.model?.materials = [
             PhysicallyBasedMaterial.focusSpace(
@@ -266,6 +278,7 @@ final class RealityFocusRenderer {
     ) -> Bool {
         guard let previous else { return true }
         return previous.title != item.title
+            || previous.notes != item.notes
             || previous.kind != item.kind
             || previous.attention != item.attention
             || previous.hierarchyDepth != item.hierarchyDepth
@@ -278,14 +291,15 @@ final class RealityFocusRenderer {
     }
 
     private func mesh(for kind: FocusNodeKind, style: NodeVisualStyle) -> MeshResource {
-        if let cached = nodeMeshes[kind] { return cached }
+        let key = "\(kind.rawValue)-\(style.silhouette)-\(style.width)-\(style.height)-\(style.cornerRadius)"
+        if let cached = nodeMeshes[key] { return cached }
         let mesh = MeshResource.generateBox(
             width: style.width,
             height: style.height,
             depth: 0.15,
             cornerRadius: style.cornerRadius
         )
-        nodeMeshes[kind] = mesh
+        nodeMeshes[key] = mesh
         return mesh
     }
 
@@ -300,8 +314,10 @@ final class RealityFocusRenderer {
         case .someday: 14
         }
         let title = NodeLabelLayout.displayTitle(item.title, singleLineLimit: singleLineLimit)
+        let notes = NodeNotesLayout.displayText(item.notes)
+        let showsNotes = item.isSelected && !notes.isEmpty
         let attentionBand = Int(item.attention * 20)
-        let decorationName = "decorations-\(item.kind.rawValue)-\(item.urgency.rawValue)-\(item.isEnabled)-\(item.isSelected)-\(item.isHovered)-\(item.contextRole)-\(attentionBand)-\(title)"
+        let decorationName = "decorations-\(item.kind.rawValue)-\(item.urgency.rawValue)-\(item.isEnabled)-\(item.isSelected)-\(item.isHovered)-\(item.contextRole)-\(attentionBand)-\(title)-\(notes.hashValue)"
         if entity.children.contains(where: { $0.name == decorationName }) { return }
         for child in entity.children where child.name.hasPrefix("decorations-") { child.removeFromParent() }
 
@@ -316,13 +332,18 @@ final class RealityFocusRenderer {
             name: "kind-frame"
         ))
 
-        let renderedTitle = title.contains("\n") ? title : "\n\(title)"
+        let renderedTitle = showsNotes ? title : (title.contains("\n") ? title : "\n\(title)")
         let font = NSFont.systemFont(ofSize: 0.13, weight: item.isSelected ? .semibold : .medium)
         let mesh = MeshResource.generateText(
             renderedTitle,
             extrusionDepth: 0.002,
             font: font,
-            containerFrame: CGRect(x: 0, y: 0, width: CGFloat(style.width - 0.34), height: CGFloat(style.height - 0.12)),
+            containerFrame: CGRect(
+                x: 0,
+                y: 0,
+                width: CGFloat(style.width - 0.34),
+                height: CGFloat(showsNotes ? 0.32 : style.height - 0.12)
+            ),
             alignment: .center,
             lineBreakMode: .byTruncatingTail
         )
@@ -332,10 +353,45 @@ final class RealityFocusRenderer {
         label.name = "node-label"
         label.position = SIMD3<Float>(
             -style.width / 2 + 0.24,
-            -style.height / 2 + 0.05,
+            showsNotes ? style.height / 2 - 0.38 : -style.height / 2 + 0.05,
             0.083
         )
         decorations.addChild(label)
+
+        if showsNotes {
+            let divider = ModelEntity(
+                mesh: .generateBox(width: style.width - 0.34, height: 0.006, depth: 0.004),
+                materials: [UnlitMaterial(color: NSColor(white: 1, alpha: 0.18))]
+            )
+            divider.name = "notes-divider"
+            divider.position = SIMD3<Float>(0, style.height / 2 - 0.47, 0.084)
+            decorations.addChild(divider)
+
+            let notesMesh = MeshResource.generateText(
+                notes,
+                extrusionDepth: 0.001,
+                font: .systemFont(ofSize: 0.092, weight: .regular),
+                containerFrame: CGRect(
+                    x: 0,
+                    y: 0,
+                    width: CGFloat(style.width - 0.36),
+                    height: CGFloat(style.height - 0.62)
+                ),
+                alignment: .left,
+                lineBreakMode: .byWordWrapping
+            )
+            let notesLabel = ModelEntity(
+                mesh: notesMesh,
+                materials: [UnlitMaterial(color: NSColor(white: 0.92, alpha: 0.78))]
+            )
+            notesLabel.name = "node-notes"
+            notesLabel.position = SIMD3<Float>(
+                -style.width / 2 + 0.18,
+                -style.height / 2 + 0.12,
+                0.084
+            )
+            decorations.addChild(notesLabel)
+        }
 
         let glyph = makeGlyph(
             style.glyph,
@@ -343,7 +399,11 @@ final class RealityFocusRenderer {
             color: NSColor(white: 1, alpha: 0.9),
             name: "kind-glyph"
         )
-        glyph.position = SIMD3<Float>(-style.width / 2 + 0.09, -0.045, 0.087)
+        glyph.position = SIMD3<Float>(
+            -style.width / 2 + 0.09,
+            showsNotes ? style.height / 2 - 0.22 : -0.045,
+            0.087
+        )
         decorations.addChild(glyph)
 
         if let urgencyGlyph = style.urgencyGlyph,
@@ -529,7 +589,9 @@ final class RealityFocusRenderer {
             attention: item.attention,
             hierarchyDepth: item.hierarchyDepth,
             urgency: item.urgency,
-            isEnabled: item.isEnabled
+            isEnabled: item.isEnabled,
+            shapePreference: shapePreference,
+            isExpanded: item.isSelected && !item.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         )
     }
 
@@ -589,7 +651,9 @@ final class RealityFocusRenderer {
                 attention: item.attention,
                 hierarchyDepth: item.hierarchyDepth,
                 urgency: item.urgency,
-                isEnabled: item.isEnabled
+                isEnabled: item.isEnabled,
+                shapePreference: shapePreference,
+                isExpanded: item.isSelected && !item.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ).hierarchyOffset,
             tokens.attentionFarZ + Float(item.attention) * range
         )

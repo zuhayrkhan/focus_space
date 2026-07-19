@@ -28,7 +28,9 @@ struct NodeVisualStyle: Equatable, Sendable {
         attention: Double,
         hierarchyDepth: Int,
         urgency: FocusNodeUrgency,
-        isEnabled: Bool
+        isEnabled: Bool,
+        shapePreference: NodeShapePreference = .semantic,
+        isExpanded: Bool = false
     ) -> Self {
         let attention = Float(min(max(attention, 0), 1))
         let family: (
@@ -51,6 +53,14 @@ struct NodeVisualStyle: Equatable, Sendable {
             (.ghost, 1.34, 0.52, 0.24, VisualColor(0.28, 0.35, 0.40), "○")
         }
 
+        let preferredShape: (NodeSilhouette, Float, Float, Float) = switch shapePreference {
+        case .semantic: (family.0, family.1, family.2, family.3)
+        case .rounded: (.panel, 1.50, 0.60, 0.13)
+        case .capsule: (.capsule, 1.50, 0.58, 0.26)
+        case .compact: (.compact, 1.34, 0.52, 0.055)
+        }
+        let expandedWidth = isExpanded ? max(preferredShape.1 + 0.24, 1.72) : preferredShape.1
+        let expandedHeight = isExpanded ? preferredShape.2 + 0.72 : preferredShape.2
         let urgencyVisual: (String?, VisualColor?) = switch urgency {
         case .none: (nil, nil)
         case .soon: ("!", VisualColor(1.0, 0.66, 0.12))
@@ -58,10 +68,10 @@ struct NodeVisualStyle: Equatable, Sendable {
         }
         let enabledMultiplier: Float = isEnabled ? 1 : 0.42
         return Self(
-            silhouette: family.0,
-            width: family.1,
-            height: family.2,
-            cornerRadius: family.3,
+            silhouette: preferredShape.0,
+            width: expandedWidth,
+            height: expandedHeight,
+            cornerRadius: preferredShape.3,
             color: family.4,
             glyph: isEnabled ? family.5 : "—",
             opacity: enabledMultiplier * (0.45 + attention * 0.55),
@@ -72,6 +82,16 @@ struct NodeVisualStyle: Equatable, Sendable {
             urgencyGlyph: urgencyVisual.0,
             urgencyColor: urgencyVisual.1
         )
+    }
+}
+
+enum NodeNotesLayout {
+    static func displayText(_ notes: String, maximumCharacters: Int = 150) -> String {
+        let normalized = notes
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+        guard normalized.count > maximumCharacters else { return normalized }
+        return String(normalized.prefix(maximumCharacters - 1)) + "…"
     }
 }
 

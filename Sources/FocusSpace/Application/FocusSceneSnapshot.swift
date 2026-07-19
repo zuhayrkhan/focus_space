@@ -11,6 +11,7 @@ struct FocusSceneSnapshot: Equatable, Sendable {
     struct Item: Identifiable, Equatable, Sendable {
         let id: UUID
         let title: String
+        let notes: String
         let kind: FocusNodeKind
         let position: SpatialPoint
         let attention: Double
@@ -26,6 +27,7 @@ struct FocusSceneSnapshot: Equatable, Sendable {
         init(
             id: UUID,
             title: String,
+            notes: String = "",
             kind: FocusNodeKind,
             position: SpatialPoint,
             attention: Double,
@@ -40,6 +42,7 @@ struct FocusSceneSnapshot: Equatable, Sendable {
         ) {
             self.id = id
             self.title = title
+            self.notes = notes
             self.kind = kind
             self.position = position
             self.attention = attention

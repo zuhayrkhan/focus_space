@@ -63,6 +63,7 @@ final class FocusSpaceStore: ObservableObject {
             return FocusSceneSnapshot.Item(
                 id: node.id,
                 title: node.title,
+                notes: node.notes,
                 kind: node.kind,
                 position: node.position,
                 attention: node.attention,
@@ -93,7 +94,10 @@ final class FocusSpaceStore: ObservableObject {
     }
 
     func select(_ id: UUID?) {
+        let selectionChanged = selection != id
         withAnimationIntent { selection = id }
+        guard selectionChanged, let id, !map.descendants(of: id).isEmpty else { return }
+        frameBranch(id)
     }
 
     func setCameraPose(_ pose: FocusCameraIntent.Pose, animated: Bool = false) {
@@ -142,8 +146,13 @@ final class FocusSpaceStore: ObservableObject {
     }
 
     func frameSelection() {
-        guard let selection, let selected = map.node(id: selection) else { return }
-        let ids = map.descendants(of: selection).union([selection])
+        guard let selection else { return }
+        frameBranch(selection)
+    }
+
+    private func frameBranch(_ id: UUID) {
+        guard let selected = map.node(id: id) else { return }
+        let ids = map.descendants(of: id).union([id])
         let nodes = map.nodes.filter { ids.contains($0.id) }
         let minX = nodes.map(\.position.x).min() ?? selected.position.x
         let maxX = nodes.map(\.position.x).max() ?? selected.position.x
@@ -151,16 +160,22 @@ final class FocusSpaceStore: ObservableObject {
         let maxY = nodes.map(\.position.y).max() ?? selected.position.y
         let attention = nodes.map(\.attention).reduce(0, +) / Double(max(nodes.count, 1))
         let span = max(maxX - minX, (maxY - minY) * 1.6)
+        let desiredDistance = min(max(5.4 + span * 0.72, 5.4), 12.5)
+        let center = SpatialPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2)
+        let selectedBias = 0.30
         let pose = FocusCameraIntent.Pose(
-            target: SpatialPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2),
+            target: SpatialPoint(
+                x: center.x + (selected.position.x - center.x) * selectedBias,
+                y: center.y + (selected.position.y - center.y) * selectedBias
+            ),
             targetAttention: attention,
-            yaw: 0,
-            pitch: 0,
-            distance: min(max(5.4 + span * 0.72, 5.4), 12.5)
+            yaw: cameraIntent.pose.yaw,
+            pitch: cameraIntent.pose.pitch,
+            distance: max(4.2, min(desiredDistance, cameraIntent.pose.distance * 0.82))
         ).bounded()
         cameraIntent = FocusCameraIntent(
             pose: pose,
-            mode: .framed(selection),
+            mode: .framed(id),
             revision: cameraIntent.revision + 1,
             isAnimated: true
         )
@@ -272,6 +287,15 @@ final class FocusSpaceStore: ObservableObject {
         } }
     }
 
+    func setNotes(_ id: UUID, to notes: String) {
+        mutate(recordingUndo: !isInteracting) { map in
+            map.updateNode(id: id) { node in
+                node.notes = notes
+                node.updatedAt = .now
+            }
+        }
+    }
+
     func setUrgency(_ id: UUID, to urgency: FocusNodeUrgency) {
         mutate { $0.updateNode(id: id) { node in
             node.urgency = urgency
@@ -327,6 +351,7 @@ final class FocusSpaceStore: ObservableObject {
         guard var copy = map.node(id: id) else { return }
         copy = FocusNode(
             title: "\(copy.title) copy",
+            notes: copy.notes,
             kind: copy.kind,
             position: SpatialPoint(x: copy.position.x + 0.45, y: copy.position.y - 0.45),
             attention: copy.attention,
@@ -509,7 +534,13 @@ final class FocusSpaceStore: ObservableObject {
     private func withAnimationIntent(_ change: () -> Void) { change() }
 
     private static var sampleMap: FocusMap {
-        let launch = FocusNode(title: "Shape the first release", kind: .project, position: SpatialPoint(x: 0, y: 0.55), attention: 0.93)
+        let launch = FocusNode(
+            title: "Shape the first release",
+            notes: "A calm spatial home for deciding what deserves attention now.",
+            kind: .project,
+            position: SpatialPoint(x: 0, y: 0.55),
+            attention: 0.93
+        )
         let prototype = FocusNode(title: "Make depth feel natural", kind: .group, position: SpatialPoint(x: -1.65, y: -0.65), attention: 0.8, parentID: launch.id)
         let conversations = FocusNode(title: "Talk to early explorers", position: SpatialPoint(x: 1.65, y: -0.7), attention: 0.62, parentID: launch.id, urgency: .soon)
         let later = FocusNode(title: "Shared spaces", kind: .someday, position: SpatialPoint(x: 2.7, y: 1.15), attention: 0.18)

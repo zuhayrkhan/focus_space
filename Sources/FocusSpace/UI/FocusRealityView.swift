@@ -4,6 +4,7 @@ import SwiftUI
 struct FocusRealityView: View {
     @ObservedObject var store: FocusSpaceStore
     @Binding var universeGuideOpacity: Double
+    let nodeShapePreference: NodeShapePreference
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("nodeLegendCorner") private var legendCornerRaw = LegendCorner.topTrailing.rawValue
     @State private var renderer = RealityFocusRenderer()
@@ -28,7 +29,11 @@ struct FocusRealityView: View {
         } update: { content in
             guard let root = content.entities.first?.findEntity(named: RealityFocusRenderer.rootName)
                 ?? content.entities.first(where: { $0.name == RealityFocusRenderer.rootName }) else { return }
-            renderer.reconcile(root: root, snapshot: store.sceneSnapshot)
+            renderer.reconcile(
+                root: root,
+                snapshot: store.sceneSnapshot,
+                shapePreference: nodeShapePreference
+            )
             renderer.updateAmbient(root: root, reduceMotion: reduceMotion)
             renderer.updateCamera(root: root, intent: store.cameraIntent, reduceMotion: reduceMotion)
             renderer.updateGuideOpacity(root: root, opacity: universeGuideOpacity)
@@ -384,6 +389,7 @@ struct FocusRealityView: View {
         FocusSceneSnapshot.Item(
             id: item.id,
             title: item.title,
+            notes: item.notes,
             kind: item.kind,
             position: position,
             attention: attention,

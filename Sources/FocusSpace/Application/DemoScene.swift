@@ -11,6 +11,7 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
         let urgency: FocusNodeUrgency
         let isEnabled: Bool
         let relatedIndices: [Int]
+        let notes: String
 
         init(
             _ title: String,
@@ -21,7 +22,8 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
             kind: FocusNodeKind = .task,
             urgency: FocusNodeUrgency = .none,
             isEnabled: Bool = true,
-            relatedIndices: [Int] = []
+            relatedIndices: [Int] = [],
+            notes: String = ""
         ) {
             self.title = title
             self.x = x
@@ -32,6 +34,7 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
             self.urgency = urgency
             self.isEnabled = isEnabled
             self.relatedIndices = relatedIndices
+            self.notes = notes
         }
     }
 
@@ -66,7 +69,10 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
             return Self.makeMap(
                 title: rawValue,
                 specifications: [
-                    Specification("System Platform", 0, 1.4, 0.48, kind: .project),
+                    Specification(
+                        "System Platform", 0, 1.4, 0.48, kind: .project,
+                        notes: "The platform programme connecting the current product, risk, and operating-model work."
+                    ),
                     Specification("Critical Now", 0, -0.15, 0.98, kind: .project, urgency: .overdue),
                     Specification("Risk & Compliance", -2.25, 0.55, 0.72, 0, kind: .group),
                     Specification("UI / UX", -0.8, 0.62, 0.68, 0, kind: .group),
@@ -98,7 +104,10 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
             return Self.makeMap(
                 title: rawValue,
                 specifications: [
-                    Specification("Release Focus Space", 0, 2.0, 0.64, kind: .project),
+                    Specification(
+                        "Release Focus Space", 0, 2.0, 0.64, kind: .project,
+                        notes: "Bring the spatial attention model, calm interaction language, and dependable foundations into one coherent release."
+                    ),
                     Specification("Experience", -2.6, 1.0, 0.70, 0, kind: .group),
                     Specification("Intelligence", 0, 1.0, 0.66, 0, kind: .group),
                     Specification("Foundations", 2.6, 1.0, 0.62, 0, kind: .group),
@@ -163,6 +172,7 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
             FocusNode(
                 id: ids[index],
                 title: specification.title,
+                notes: specification.notes,
                 kind: specification.kind,
                 position: SpatialPoint(x: specification.x, y: specification.y),
                 attention: specification.attention,

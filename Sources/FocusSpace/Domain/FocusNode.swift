@@ -39,6 +39,7 @@ enum FocusNodeUrgency: String, CaseIterable, Codable, Identifiable, Sendable {
 struct FocusNode: Identifiable, Codable, Equatable, Sendable {
     let id: UUID
     var title: String
+    var notes: String
     var kind: FocusNodeKind
     var position: SpatialPoint
     private(set) var attention: Double
@@ -52,6 +53,7 @@ struct FocusNode: Identifiable, Codable, Equatable, Sendable {
     init(
         id: UUID = UUID(),
         title: String,
+        notes: String = "",
         kind: FocusNodeKind = .task,
         position: SpatialPoint = .zero,
         attention: Double = 0.5,
@@ -64,6 +66,7 @@ struct FocusNode: Identifiable, Codable, Equatable, Sendable {
     ) {
         self.id = id
         self.title = title
+        self.notes = notes
         self.kind = kind
         self.position = position
         self.attention = Self.clamp(attention)
@@ -76,7 +79,7 @@ struct FocusNode: Identifiable, Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, kind, position, attention, parentID, relatedNodeIDs
+        case id, title, notes, kind, position, attention, parentID, relatedNodeIDs
         case urgency, isEnabled, createdAt, updatedAt
     }
 
@@ -84,6 +87,7 @@ struct FocusNode: Identifiable, Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         title = try container.decode(String.self, forKey: .title)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
         kind = try container.decodeIfPresent(FocusNodeKind.self, forKey: .kind) ?? .task
         position = try container.decode(SpatialPoint.self, forKey: .position)
         attention = Self.clamp(try container.decode(Double.self, forKey: .attention))
