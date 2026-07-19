@@ -92,7 +92,7 @@ final class ExperienceFoundationTests: XCTestCase {
     }
 
     func testGlobalShapePreferenceCreatesAConsistentVisualLanguage() {
-        for preference in [NodeShapePreference.rounded, .capsule, .compact] {
+        for preference in NodeShapePreference.allCases where preference != .semantic {
             let styles = FocusNodeKind.allCases.map {
                 NodeVisualStyle.resolve(
                     kind: $0,
@@ -236,7 +236,7 @@ final class ExperienceFoundationTests: XCTestCase {
     }
 
     @MainActor
-    func testRendererUsesHaloWithoutChangingSelectedNodeScale() throws {
+    func testRendererUsesShapeMatchedHazeWithoutChangingSelectedNodeScale() throws {
         let renderer = RealityFocusRenderer(quality: .efficient)
         let root = renderer.makeScene()
         let id = UUID()
@@ -273,7 +273,11 @@ final class ExperienceFoundationTests: XCTestCase {
         renderer.reconcile(root: root, snapshot: FocusSceneSnapshot(items: [selected]))
 
         XCTAssertEqual(entity.scale, unselectedScale)
-        XCTAssertNotNil(entity.findEntity(named: "selection-halo"))
+        XCTAssertNotNil(entity.findEntity(named: "selection-haze-inner"))
+        XCTAssertNotNil(entity.findEntity(named: "selection-haze-middle"))
+        XCTAssertNotNil(entity.findEntity(named: "selection-haze-outer"))
+        XCTAssertNil(entity.findEntity(named: "selection-halo"))
+        XCTAssertNotNil(entity.findEntity(named: "kind-edge"))
         XCTAssertNotNil(entity.findEntity(named: "kind-glyph"))
         XCTAssertNotNil(entity.findEntity(named: "urgency-badge"))
     }

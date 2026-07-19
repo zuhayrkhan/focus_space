@@ -4,6 +4,7 @@ struct ContentView: View {
     @ObservedObject var store: FocusSpaceStore
     @AppStorage("universeGuideOpacity") private var universeGuideOpacity = 0.08
     @AppStorage("nodeShapePreference") private var nodeShapePreferenceRaw = NodeShapePreference.semantic.rawValue
+    @AppStorage("inspectorVisible") private var inspectorVisible = true
 
     var body: some View {
         NavigationSplitView {
@@ -15,7 +16,11 @@ struct ContentView: View {
                     universeGuideOpacity: $universeGuideOpacity,
                     nodeShapePreference: NodeShapePreference(rawValue: nodeShapePreferenceRaw) ?? .semantic
                 )
-                if store.selection != nil { NodeInspector(store: store) }
+                if inspectorVisible {
+                    Divider()
+                    NodeInspector(store: store)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
             }
             .overlay(alignment: .top) { searchField }
         }
@@ -137,6 +142,13 @@ struct ContentView: View {
                 Button("Pull forward", systemImage: "arrow.up.to.line") { store.shiftAttention(id, by: 0.12) }
                 Button("Push back", systemImage: "arrow.down.to.line") { store.shiftAttention(id, by: -0.12) }
             }
+            Button(inspectorVisible ? "Hide inspector" : "Show inspector", systemImage: "sidebar.right") {
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) {
+                    inspectorVisible.toggle()
+                }
+            }
+            .keyboardShortcut("i", modifiers: [.command, .option])
+            .help(inspectorVisible ? "Hide inspector" : "Show inspector")
         }
     }
 

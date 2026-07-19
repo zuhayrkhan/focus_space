@@ -21,12 +21,21 @@ Trackpad pinch/stretch remains a direct camera zoom. A canvas-scoped macOS magni
 
 The available visual languages are:
 
-- **Distinct** — the original kind-specific silhouettes
+- **Distinct** — a mixed family of panels, ellipses, capsules, diamonds, and circles
 - **Rounded** — consistent calm rounded rectangles
 - **Capsule** — a softer pill-shaped family
 - **Compact** — tighter cards with restrained corners
+- **Ellipse** — a consistent elliptical family
+- **Circle** — equal circular forms
+- **Diamond** — a consistent angular family
 
 Shape is intentionally not stored on individual nodes. RealityKit consumes the global rendering preference without adding presentation detail to the domain model.
+
+Selection uses three quiet translucent layers behind the node instead of a bright outline. Each layer follows the node's actual silhouette and colour, creating a soft haze around rectangles, ellipses, circles, and diamonds alike.
+
+## Persistent inspector
+
+The right inspector remains present when no thought is selected and shows a calm empty state. Its toolbar control uses the standard trailing-sidebar symbol, persists the user's visibility preference, and is also available with `Option-Command-I`.
 
 ## Notes on selected cards
 

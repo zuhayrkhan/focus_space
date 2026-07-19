@@ -6,6 +6,9 @@ enum NodeSilhouette: Equatable, Sendable {
     case compact
     case note
     case ghost
+    case ellipse
+    case circle
+    case diamond
 }
 
 struct NodeVisualStyle: Equatable, Sendable {
@@ -46,13 +49,13 @@ struct NodeVisualStyle: Equatable, Sendable {
         case .project:
             (.panel, 1.58, 0.68, 0.13, VisualColor(0.07, 0.28, 0.62), VisualColor(0.10, 0.50, 0.78), "◆")
         case .group:
-            (.capsule, 1.42, 0.58, 0.25, VisualColor(0.28, 0.14, 0.58), VisualColor(0.48, 0.24, 0.72), "◇")
+            (.ellipse, 1.46, 0.68, 0, VisualColor(0.28, 0.14, 0.58), VisualColor(0.48, 0.24, 0.72), "◇")
         case .task:
-            (.compact, 1.30, 0.52, 0.11, VisualColor(0.07, 0.34, 0.20), VisualColor(0.12, 0.54, 0.36), "✓")
+            (.capsule, 1.34, 0.54, 0.24, VisualColor(0.07, 0.34, 0.20), VisualColor(0.12, 0.54, 0.36), "✓")
         case .reference:
-            (.note, 1.36, 0.56, 0.045, VisualColor(0.48, 0.27, 0.05), VisualColor(0.68, 0.43, 0.10), "▤")
+            (.diamond, 1.48, 0.88, 0, VisualColor(0.48, 0.27, 0.05), VisualColor(0.68, 0.43, 0.10), "▤")
         case .someday:
-            (.ghost, 1.34, 0.52, 0.24, VisualColor(0.22, 0.29, 0.35), VisualColor(0.38, 0.44, 0.48), "○")
+            (.circle, 0.98, 0.98, 0, VisualColor(0.22, 0.29, 0.35), VisualColor(0.38, 0.44, 0.48), "○")
         }
 
         let preferredShape: (NodeSilhouette, Float, Float, Float) = switch shapePreference {
@@ -60,6 +63,9 @@ struct NodeVisualStyle: Equatable, Sendable {
         case .rounded: (.panel, 1.50, 0.60, 0.13)
         case .capsule: (.capsule, 1.50, 0.58, 0.26)
         case .compact: (.compact, 1.34, 0.52, 0.055)
+        case .ellipse: (.ellipse, 1.52, 0.70, 0)
+        case .circle: (.circle, 1.04, 1.04, 0)
+        case .diamond: (.diamond, 1.50, 0.90, 0)
         }
         let expandedWidth = isExpanded ? max(preferredShape.1 + 0.24, 1.72) : preferredShape.1
         let expandedHeight = isExpanded ? preferredShape.2 + 0.72 : preferredShape.2

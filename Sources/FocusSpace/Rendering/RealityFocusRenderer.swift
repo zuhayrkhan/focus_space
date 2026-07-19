@@ -13,7 +13,6 @@ final class RealityFocusRenderer {
     private weak var sceneRoot: Entity?
     private var ambientController: AnimationPlaybackController?
     private var nodeMeshes: [String: MeshResource] = [:]
-    private var frameMeshes: [String: MeshResource] = [:]
     private var relationshipKeys: [String: RelationshipRenderKey] = [:]
     private var shapePreference: NodeShapePreference = .semantic
     private(set) var isAmbientMotionPaused = false
@@ -225,7 +224,7 @@ final class RealityFocusRenderer {
             isEnabled: true,
             shapePreference: shapePreference
         )
-        let mesh = mesh(for: .task, style: style)
+        let mesh = mesh(for: style)
         let entity = ModelEntity(mesh: mesh, materials: [UnlitMaterial(color: .white)])
         entity.name = name
         entity.components.set(InputTargetComponent())
@@ -259,7 +258,7 @@ final class RealityFocusRenderer {
         entity.scale = SIMD3<Float>(repeating: depthScale)
 
         guard let model = entity as? ModelEntity else { return }
-        model.model?.mesh = mesh(for: item.kind, style: style)
+        model.model?.mesh = mesh(for: style)
         model.generateCollisionShapes(recursive: false)
         let color = style.color.nsColor.withSaturation(CGFloat(style.saturation))
         model.model?.materials = [
@@ -291,17 +290,110 @@ final class RealityFocusRenderer {
             || previous.contextRole != item.contextRole
     }
 
-    private func mesh(for kind: FocusNodeKind, style: NodeVisualStyle) -> MeshResource {
-        let key = "\(kind.rawValue)-\(style.silhouette)-\(style.width)-\(style.height)-\(style.cornerRadius)"
-        if let cached = nodeMeshes[key] { return cached }
-        let mesh = MeshResource.generateBox(
+    private func mesh(for style: NodeVisualStyle) -> MeshResource {
+        mesh(
+            silhouette: style.silhouette,
             width: style.width,
             height: style.height,
-            depth: 0.15,
-            cornerRadius: style.cornerRadius
+            cornerRadius: style.cornerRadius,
+            depth: 0.15
         )
+    }
+
+    private func mesh(
+        silhouette: NodeSilhouette,
+        width: Float,
+        height: Float,
+        cornerRadius: Float,
+        depth: Float
+    ) -> MeshResource {
+        let key = "\(silhouette)-\(width)-\(height)-\(cornerRadius)-\(depth)"
+        if let cached = nodeMeshes[key] { return cached }
+        let mesh: MeshResource = switch silhouette {
+        case .ellipse, .circle:
+            (try? makeRadialPrismMesh(width: width, height: height, depth: depth, segments: 48))
+                ?? .generateBox(width: width, height: height, depth: depth, cornerRadius: min(width, height) / 2)
+        case .diamond:
+            (try? makeRadialPrismMesh(width: width, height: height, depth: depth, segments: 4))
+                ?? .generateBox(width: width, height: height, depth: depth, cornerRadius: 0)
+        case .panel, .capsule, .compact, .note, .ghost:
+            .generateBox(width: width, height: height, depth: depth, cornerRadius: cornerRadius)
+        }
         nodeMeshes[key] = mesh
         return mesh
+    }
+
+    private func makeRadialPrismMesh(
+        width: Float,
+        height: Float,
+        depth: Float,
+        segments: Int
+    ) throws -> MeshResource {
+        let halfWidth = width / 2
+        let halfHeight = height / 2
+        let halfDepth = depth / 2
+        let step = Float.pi * 2 / Float(segments)
+        let points = (0..<segments).map { index in
+            let angle = Float(index) * step
+            return SIMD2<Float>(cos(angle) * halfWidth, sin(angle) * halfHeight)
+        }
+        var positions: [SIMD3<Float>] = []
+        var normals: [SIMD3<Float>] = []
+        var indices: [UInt32] = []
+
+        let frontCenter = UInt32(positions.count)
+        positions.append(SIMD3<Float>(0, 0, halfDepth))
+        normals.append(SIMD3<Float>(0, 0, 1))
+        let frontStart = UInt32(positions.count)
+        for point in points {
+            positions.append(SIMD3<Float>(point.x, point.y, halfDepth))
+            normals.append(SIMD3<Float>(0, 0, 1))
+        }
+        for index in 0..<segments {
+            let next = (index + 1) % segments
+            indices += [frontCenter, frontStart + UInt32(index), frontStart + UInt32(next)]
+        }
+
+        let backCenter = UInt32(positions.count)
+        positions.append(SIMD3<Float>(0, 0, -halfDepth))
+        normals.append(SIMD3<Float>(0, 0, -1))
+        let backStart = UInt32(positions.count)
+        for point in points {
+            positions.append(SIMD3<Float>(point.x, point.y, -halfDepth))
+            normals.append(SIMD3<Float>(0, 0, -1))
+        }
+        for index in 0..<segments {
+            let next = (index + 1) % segments
+            indices += [backCenter, backStart + UInt32(next), backStart + UInt32(index)]
+        }
+
+        for index in 0..<segments {
+            let next = (index + 1) % segments
+            let first = points[index]
+            let second = points[next]
+            let midpointAngle = (Float(index) + 0.5) * step
+            let rawNormal = SIMD3<Float>(
+                cos(midpointAngle) / max(halfWidth, 0.001),
+                sin(midpointAngle) / max(halfHeight, 0.001),
+                0
+            )
+            let normal = simd_normalize(rawNormal)
+            let start = UInt32(positions.count)
+            positions += [
+                SIMD3<Float>(first.x, first.y, halfDepth),
+                SIMD3<Float>(second.x, second.y, halfDepth),
+                SIMD3<Float>(second.x, second.y, -halfDepth),
+                SIMD3<Float>(first.x, first.y, -halfDepth)
+            ]
+            normals += Array(repeating: normal, count: 4)
+            indices += [start, start + 1, start + 2, start, start + 2, start + 3]
+        }
+
+        var descriptor = MeshDescriptor(name: "radial-node-prism")
+        descriptor.positions = MeshBuffers.Positions(positions)
+        descriptor.normals = MeshBuffers.Normals(normals)
+        descriptor.primitives = .triangles(indices)
+        return try MeshResource.generate(from: [descriptor])
     }
 
     private func updateDecorations(
@@ -318,19 +410,20 @@ final class RealityFocusRenderer {
         let notes = NodeNotesLayout.displayText(item.notes)
         let showsNotes = item.isSelected && !notes.isEmpty
         let attentionBand = Int(item.attention * 20)
-        let decorationName = "decorations-\(item.kind.rawValue)-\(item.urgency.rawValue)-\(item.isEnabled)-\(item.isSelected)-\(item.isHovered)-\(item.contextRole)-\(attentionBand)-\(title)-\(notes.hashValue)"
+        let decorationName = "decorations-\(style.silhouette)-\(style.width)-\(style.height)-\(item.kind.rawValue)-\(item.urgency.rawValue)-\(item.isEnabled)-\(item.isSelected)-\(item.isHovered)-\(item.contextRole)-\(attentionBand)-\(title)-\(notes.hashValue)"
         if entity.children.contains(where: { $0.name == decorationName }) { return }
         for child in entity.children where child.name.hasPrefix("decorations-") { child.removeFromParent() }
 
         let decorations = Entity()
         decorations.name = decorationName
-        decorations.addChild(makeFrame(
-            width: style.width,
-            height: style.height,
-            thickness: item.kind == .project ? 0.018 : 0.011,
+        decorations.addChild(makeSilhouetteLayer(
+            style: style,
+            expansion: item.kind == .project ? 0.055 : 0.035,
+            depth: 0.13,
             color: style.color.nsColor,
             opacity: style.borderOpacity,
-            name: "kind-frame"
+            name: "kind-edge",
+            z: -0.018
         ))
 
         let renderedTitle = showsNotes ? title : (title.contains("\n") ? title : "\n\(title)")
@@ -422,29 +515,45 @@ final class RealityFocusRenderer {
         }
 
         if item.isSelected {
-            let halo = makeFrame(
-                width: style.width + 0.13,
-                height: style.height + 0.13,
-                thickness: 0.018,
-                color: tokens.focusCore.nsColor,
-                opacity: 0.68,
-                name: "selection-halo"
-            )
-            halo.position.z = -0.012
-            decorations.addChild(halo)
+            decorations.addChild(makeSilhouetteLayer(
+                style: style,
+                expansion: 0.14,
+                depth: 0.018,
+                color: style.color.nsColor,
+                opacity: 0.22,
+                name: "selection-haze-inner",
+                z: -0.095
+            ))
+            decorations.addChild(makeSilhouetteLayer(
+                style: style,
+                expansion: 0.28,
+                depth: 0.014,
+                color: style.color.nsColor,
+                opacity: 0.10,
+                name: "selection-haze-middle",
+                z: -0.10
+            ))
+            decorations.addChild(makeSilhouetteLayer(
+                style: style,
+                expansion: 0.44,
+                depth: 0.010,
+                color: style.color.nsColor,
+                opacity: 0.045,
+                name: "selection-haze-outer",
+                z: -0.105
+            ))
         }
 
         if item.isHovered || item.contextRole == .branch {
-            let halo = makeFrame(
-                width: style.width + (item.isHovered ? 0.18 : 0.08),
-                height: style.height + (item.isHovered ? 0.18 : 0.08),
-                thickness: item.isHovered ? 0.014 : 0.007,
+            decorations.addChild(makeSilhouetteLayer(
+                style: style,
+                expansion: item.isHovered ? 0.16 : 0.07,
+                depth: 0.012,
                 color: item.isHovered ? tokens.focusCore.nsColor : tokens.focusBlue.nsColor,
-                opacity: item.isHovered ? 0.52 : 0.20,
-                name: item.isHovered ? "hover-halo" : "family-halo"
-            )
-            halo.position.z = -0.018
-            decorations.addChild(halo)
+                opacity: item.isHovered ? 0.18 : 0.08,
+                name: item.isHovered ? "hover-haze" : "family-haze",
+                z: -0.09
+            ))
         }
 
         if !item.isEnabled {
@@ -476,54 +585,29 @@ final class RealityFocusRenderer {
         return entity
     }
 
-    private func makeFrame(
-        width: Float,
-        height: Float,
-        thickness: Float,
+    private func makeSilhouetteLayer(
+        style: NodeVisualStyle,
+        expansion: Float,
+        depth: Float,
         color: NSColor,
         opacity: Float,
-        name: String
-    ) -> Entity {
-        let meshKey = "\(width)-\(height)-\(thickness)"
-        let mesh: MeshResource
-        if let cached = frameMeshes[meshKey] {
-            mesh = cached
-        } else if let generated = try? makeFrameMesh(width: width, height: height, thickness: thickness) {
-            frameMeshes[meshKey] = generated
-            mesh = generated
-        } else {
-            return Entity()
-        }
+        name: String,
+        z: Float
+    ) -> ModelEntity {
+        let mesh = mesh(
+            silhouette: style.silhouette,
+            width: style.width + expansion,
+            height: style.height + expansion,
+            cornerRadius: style.cornerRadius + expansion * 0.24,
+            depth: depth
+        )
         var material = UnlitMaterial(color: color)
         material.faceCulling = .none
         material.blending = .transparent(opacity: .init(scale: opacity))
-        let frame = ModelEntity(mesh: mesh, materials: [material])
-        frame.name = name
-        return frame
-    }
-
-    private func makeFrameMesh(width: Float, height: Float, thickness: Float) throws -> MeshResource {
-        let outerX = width / 2 + thickness / 2
-        let outerY = height / 2 + thickness / 2
-        let innerX = max(width / 2 - thickness / 2, 0)
-        let innerY = max(height / 2 - thickness / 2, 0)
-        let z: Float = 0.081
-        let positions: [SIMD3<Float>] = [
-            SIMD3<Float>(-outerX, outerY, z), SIMD3<Float>(outerX, outerY, z),
-            SIMD3<Float>(outerX, -outerY, z), SIMD3<Float>(-outerX, -outerY, z),
-            SIMD3<Float>(-innerX, innerY, z), SIMD3<Float>(innerX, innerY, z),
-            SIMD3<Float>(innerX, -innerY, z), SIMD3<Float>(-innerX, -innerY, z)
-        ]
-        let indices: [UInt32] = [
-            0, 1, 4, 4, 1, 5,
-            1, 2, 5, 5, 2, 6,
-            2, 3, 6, 6, 3, 7,
-            3, 0, 7, 7, 0, 4
-        ]
-        var descriptor = MeshDescriptor(name: "node-frame")
-        descriptor.positions = MeshBuffers.Positions(positions)
-        descriptor.primitives = .triangles(indices)
-        return try MeshResource.generate(from: [descriptor])
+        let layer = ModelEntity(mesh: mesh, materials: [material])
+        layer.name = name
+        layer.position.z = z
+        return layer
     }
 
     private func reconcileRelationships(root: Entity, snapshot: FocusSceneSnapshot) {
