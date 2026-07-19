@@ -10,9 +10,11 @@ final class RealityFocusRenderer {
     let tokens: FocusVisualTokens
     private var lastSnapshot: FocusSceneSnapshot?
     private var lastCameraRevision: Int?
+    private weak var sceneRoot: Entity?
     private var ambientController: AnimationPlaybackController?
     private var nodeMeshes: [FocusNodeKind: MeshResource] = [:]
     private var frameMeshes: [String: MeshResource] = [:]
+    private var relationshipKeys: [String: RelationshipRenderKey] = [:]
     private(set) var isAmbientMotionPaused = false
 
     init(
@@ -26,6 +28,7 @@ final class RealityFocusRenderer {
     func makeScene() -> Entity {
         let root = Entity()
         root.name = Self.rootName
+        sceneRoot = root
         root.addChild(makeCamera())
         root.addChild(makeAtmosphere())
         root.addChild(makeFocusOrigin())
@@ -35,7 +38,7 @@ final class RealityFocusRenderer {
 
     func reconcile(root: Entity, snapshot: FocusSceneSnapshot) {
         guard lastSnapshot != snapshot else { return }
-        lastSnapshot = snapshot
+        let previousItems = Dictionary(uniqueKeysWithValues: (lastSnapshot?.items ?? []).map { ($0.id, $0) })
 
         let desiredIDs = Set(snapshot.items.map { $0.id.uuidString })
         for child in root.children where child.name.hasPrefix("node-") {
@@ -47,10 +50,11 @@ final class RealityFocusRenderer {
             let name = "node-\(item.id.uuidString)"
             let entity = root.findEntity(named: name) ?? makeNode(name: name)
             if entity.parent == nil { root.addChild(entity) }
-            update(entity: entity, for: item)
+            update(entity: entity, for: item, previous: previousItems[item.id])
         }
 
         reconcileRelationships(root: root, snapshot: snapshot)
+        lastSnapshot = snapshot
     }
 
     func updateAmbient(root: Entity, reduceMotion: Bool) {
@@ -92,6 +96,17 @@ final class RealityFocusRenderer {
         } else {
             camera.transform = transform
         }
+    }
+
+    func previewCamera(intent: FocusCameraIntent, reduceMotion: Bool) {
+        guard let sceneRoot else { return }
+        updateCamera(root: sceneRoot, intent: intent, reduceMotion: reduceMotion)
+    }
+
+    func previewNodeTransform(entity: Entity, item: FocusSceneSnapshot.Item) {
+        entity.position = position(for: item)
+        let depthScale = Float(0.78 + item.attention * 0.24)
+        entity.scale = SIMD3<Float>(repeating: depthScale)
     }
 
     private func makeCamera() -> PerspectiveCamera {
@@ -247,7 +262,11 @@ final class RealityFocusRenderer {
         return entity
     }
 
-    private func update(entity: Entity, for item: FocusSceneSnapshot.Item) {
+    private func update(
+        entity: Entity,
+        for item: FocusSceneSnapshot.Item,
+        previous: FocusSceneSnapshot.Item?
+    ) {
         let style = NodeVisualStyle.resolve(
             kind: item.kind,
             attention: item.attention,
@@ -256,6 +275,7 @@ final class RealityFocusRenderer {
             isEnabled: item.isEnabled
         )
         entity.position = position(for: item)
+        guard needsVisualUpdate(from: previous, to: item) else { return }
         let contextOpacity: Float = switch item.contextRole {
         case .subdued: 0.34
         case .none, .branch, .direct: 1
@@ -266,7 +286,7 @@ final class RealityFocusRenderer {
 
         guard let model = entity as? ModelEntity else { return }
         model.model?.mesh = mesh(for: item.kind, style: style)
-        model.generateCollisionShapes(recursive: false)
+        if previous?.kind != item.kind { model.generateCollisionShapes(recursive: false) }
         let color = style.color.nsColor.withSaturation(CGFloat(style.saturation))
         model.model?.materials = [
             PhysicallyBasedMaterial.focusSpace(
@@ -277,6 +297,23 @@ final class RealityFocusRenderer {
             )
         ]
         updateDecorations(on: model, item: item, style: style)
+    }
+
+    private func needsVisualUpdate(
+        from previous: FocusSceneSnapshot.Item?,
+        to item: FocusSceneSnapshot.Item
+    ) -> Bool {
+        guard let previous else { return true }
+        return previous.title != item.title
+            || previous.kind != item.kind
+            || previous.attention != item.attention
+            || previous.hierarchyDepth != item.hierarchyDepth
+            || previous.urgency != item.urgency
+            || previous.isEnabled != item.isEnabled
+            || previous.isSelected != item.isSelected
+            || previous.isDimmed != item.isDimmed
+            || previous.isHovered != item.isHovered
+            || previous.contextRole != item.contextRole
     }
 
     private func mesh(for kind: FocusNodeKind, style: NodeVisualStyle) -> MeshResource {
@@ -468,23 +505,37 @@ final class RealityFocusRenderer {
     }
 
     private func reconcileRelationships(root: Entity, snapshot: FocusSceneSnapshot) {
-        for child in root.children where child.name.hasPrefix("link-") { child.removeFromParent() }
         let byID = Dictionary(uniqueKeysWithValues: snapshot.items.map { ($0.id, $0) })
+        let desiredNames = Set(snapshot.relationships.map(relationshipName))
+        for child in root.children where child.name.hasPrefix("link-") && !desiredNames.contains(child.name) {
+            child.removeFromParent()
+            relationshipKeys[child.name] = nil
+        }
         for relationship in snapshot.relationships {
             guard let source = byID[relationship.sourceID], let target = byID[relationship.targetID] else { continue }
             let sourceStyle = visualStyle(for: source)
             let targetStyle = visualStyle(for: target)
-            let curve = RelationshipCurveGeometry.make(
-                from: position(for: source),
+            let name = relationshipName(relationship)
+            let key = RelationshipRenderKey(
+                relationship: relationship,
+                sourcePosition: position(for: source),
                 sourceSize: SIMD2<Float>(sourceStyle.width, sourceStyle.height),
-                to: position(for: target),
-                targetSize: SIMD2<Float>(targetStyle.width, targetStyle.height),
+                targetPosition: position(for: target),
+                targetSize: SIMD2<Float>(targetStyle.width, targetStyle.height)
+            )
+            if relationshipKeys[name] == key, root.findEntity(named: name) != nil { continue }
+            root.findEntity(named: name)?.removeFromParent()
+            let curve = RelationshipCurveGeometry.make(
+                from: key.sourcePosition,
+                sourceSize: key.sourceSize,
+                to: key.targetPosition,
+                targetSize: key.targetSize,
                 kind: relationship.kind,
                 sampleCount: quality == .efficient ? 14 : 24
             )
             let segments = relationship.kind == .crossLink ? curve.dashedSegments : curve.solidSegments
             let link = Entity()
-            link.name = "link-\(relationship.kind.rawValue)-\(relationship.sourceID)-\(relationship.targetID)"
+            link.name = name
             let opacity = relationshipOpacity(relationship)
             if let glow = try? makeRelationshipMesh(segments: segments, thickness: relationshipThickness(relationship) * 2.7) {
                 var material = UnlitMaterial(color: relationshipColor(relationship))
@@ -503,7 +554,12 @@ final class RealityFocusRenderer {
                 link.addChild(entity)
             }
             root.addChild(link)
+            relationshipKeys[name] = key
         }
+    }
+
+    private func relationshipName(_ relationship: FocusSceneSnapshot.Relationship) -> String {
+        "link-\(relationship.kind.rawValue)-\(relationship.sourceID)-\(relationship.targetID)"
     }
 
     private func visualStyle(for item: FocusSceneSnapshot.Item) -> NodeVisualStyle {
@@ -704,6 +760,14 @@ final class RealityFocusRenderer {
         positions.append(contentsOf: [start - perpendicular, start + perpendicular, end - perpendicular, end + perpendicular])
         indices.append(contentsOf: [base, base + 1, base + 2, base + 2, base + 1, base + 3])
     }
+}
+
+private struct RelationshipRenderKey: Equatable {
+    let relationship: FocusSceneSnapshot.Relationship
+    let sourcePosition: SIMD3<Float>
+    let sourceSize: SIMD2<Float>
+    let targetPosition: SIMD3<Float>
+    let targetSize: SIMD2<Float>
 }
 
 private struct SeededRandom {

@@ -283,9 +283,22 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertEqual(pose.target.x, 6.5)
         XCTAssertEqual(pose.target.y, -4.2)
         XCTAssertEqual(pose.targetAttention, 1)
-        XCTAssertEqual(pose.yaw, 38)
-        XCTAssertEqual(pose.pitch, -20)
+        XCTAssertEqual(pose.yaw, 55)
+        XCTAssertEqual(pose.pitch, -34)
         XCTAssertEqual(pose.distance, 14.5)
+    }
+
+    @MainActor
+    func testUniverseDragIsDirectResponsiveAndUsesBothAxes() {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let store = FocusSpaceStore(repository: JSONFocusMapRepository(fileURL: folder.appending(path: "map.json")))
+        let origin = store.cameraIntent.pose
+
+        store.orbitCamera(horizontal: 80, vertical: 60, from: origin)
+
+        XCTAssertLessThan(store.cameraIntent.pose.yaw, -20)
+        XCTAssertGreaterThan(store.cameraIntent.pose.pitch, 12)
+        XCTAssertEqual(store.cameraIntent.mode, .free)
     }
 
     @MainActor
@@ -338,6 +351,37 @@ final class ExperienceFoundationTests: XCTestCase {
         )
         XCTAssertNotEqual(camera.position, originalPosition)
         XCTAssertEqual(camera.position, camera.position(relativeTo: root))
+    }
+
+    @MainActor
+    func testRendererPreviewsNodeMotionImmediatelyAndKeepsUnchangedLinks() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let store = FocusSpaceStore(repository: JSONFocusMapRepository(fileURL: folder.appending(path: "map.json")))
+        store.preview(.deepHierarchy)
+        store.filter = .all
+        let renderer = RealityFocusRenderer(quality: .efficient)
+        let root = renderer.makeScene()
+        let initial = store.sceneSnapshot
+        renderer.reconcile(root: root, snapshot: initial)
+
+        let movedNode = try XCTUnwrap(store.map.nodes.last)
+        let movedEntity = try XCTUnwrap(root.findEntity(named: "node-\(movedNode.id.uuidString)"))
+        let initialPosition = movedEntity.position
+        let unrelatedRelationship = try XCTUnwrap(initial.relationships.first {
+            $0.sourceID != movedNode.id && $0.targetID != movedNode.id
+        })
+        let unrelatedName = "link-\(unrelatedRelationship.kind.rawValue)-\(unrelatedRelationship.sourceID)-\(unrelatedRelationship.targetID)"
+        let unrelatedLink = try XCTUnwrap(root.findEntity(named: unrelatedName))
+
+        store.move(movedNode.id, to: SpatialPoint(x: movedNode.position.x + 1, y: movedNode.position.y - 0.5))
+        let updated = store.sceneSnapshot
+        let updatedItem = try XCTUnwrap(updated.items.first { $0.id == movedNode.id })
+        renderer.previewNodeTransform(entity: movedEntity, item: updatedItem)
+        XCTAssertNotEqual(movedEntity.position, initialPosition, "The active tile should move before reconciliation")
+
+        renderer.reconcile(root: root, snapshot: updated)
+        XCTAssertTrue(root.findEntity(named: unrelatedName) === unrelatedLink, "Unchanged links should not be rebuilt during a drag")
+        XCTAssertTrue(root.findEntity(named: "node-\(movedNode.id.uuidString)") === movedEntity)
     }
 
     @MainActor

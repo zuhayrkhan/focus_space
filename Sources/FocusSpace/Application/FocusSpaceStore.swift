@@ -114,8 +114,8 @@ final class FocusSpaceStore: ObservableObject {
 
     func orbitCamera(horizontal: Double, vertical: Double, from origin: FocusCameraIntent.Pose? = nil) {
         var pose = origin ?? cameraIntent.pose
-        pose.yaw += horizontal * 0.16
-        pose.pitch -= vertical * 0.13
+        pose.yaw -= horizontal * 0.28
+        pose.pitch += vertical * 0.22
         setCameraPose(pose)
     }
 

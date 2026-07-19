@@ -16,21 +16,20 @@ Every pose is bounded to preserve orientation: target travel, orbit angles, and 
 
 ## Interaction model
 
-- Drag empty space in **Pan** mode to translate the view.
-- Choose **Orbit** and drag empty space, or rotate on a trackpad, to inspect physical depth.
+- Drag empty space in any direction to move the universe and inspect physical depth. Horizontal and vertical motion are one direct interaction rather than separate pan/orbit modes.
 - Pinch or use the compact controls to zoom.
 - Select any node and choose **Frame Branch** (`Command-Shift-F`) to centre it and its descendants regardless of attention.
 - Press `Command-0` from anywhere to animate back to the canonical attention view.
-- Use `Command-=` / `Command--` for zoom and `Option` plus arrow keys for pan.
+- Use `Command-=` / `Command--` for zoom and `Option` plus arrow keys to move the universe.
 
 The bottom control strip fades after four seconds and returns on interaction. A free camera gently returns after 45 idle seconds only when nothing is selected or being edited. A framed branch never recentres itself. Reduce Motion changes programmatic moves to immediate transforms and pauses ambient orbit.
 
-Node dragging and universe dragging are exclusive gestures, so camera navigation cannot accidentally move a node. Framing and every camera operation leave `FocusMap` unchanged; this is enforced by tests.
+Node dragging and universe dragging are exclusive gestures, so camera navigation cannot accidentally move a node. The active node and camera receive immediate transforms during a gesture, while reconciliation updates only changed visuals and relationship meshes. Framing and every camera operation leave `FocusMap` unchanged; this is enforced by tests.
 
 ## Review checklist
 
 - [x] Renderer-independent camera target and pose contract.
-- [x] Mouse/trackpad pan, restrained orbit, rotation, and magnification.
+- [x] Unified mouse/trackpad universe movement, rotation, and magnification.
 - [x] Branch framing across X/Y and semantic Z without attention mutation.
 - [x] Animated, interruption-safe programmatic transitions.
 - [x] Predictable `Command-0` recovery.

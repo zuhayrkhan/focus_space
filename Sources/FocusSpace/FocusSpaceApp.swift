@@ -41,13 +41,13 @@ struct FocusSpaceApp: App {
                 Button("Zoom Out") { store.zoomCamera(by: 0.84, animated: true) }
                     .keyboardShortcut("-", modifiers: .command)
                 Divider()
-                Button("Pan Left") { store.panCamera(horizontal: 36, vertical: 0) }
+                Button("Move Universe Left") { store.orbitCamera(horizontal: -36, vertical: 0) }
                     .keyboardShortcut(.leftArrow, modifiers: .option)
-                Button("Pan Right") { store.panCamera(horizontal: -36, vertical: 0) }
+                Button("Move Universe Right") { store.orbitCamera(horizontal: 36, vertical: 0) }
                     .keyboardShortcut(.rightArrow, modifiers: .option)
-                Button("Pan Up") { store.panCamera(horizontal: 0, vertical: 36) }
+                Button("Move Universe Up") { store.orbitCamera(horizontal: 0, vertical: -36) }
                     .keyboardShortcut(.upArrow, modifiers: .option)
-                Button("Pan Down") { store.panCamera(horizontal: 0, vertical: -36) }
+                Button("Move Universe Down") { store.orbitCamera(horizontal: 0, vertical: 36) }
                     .keyboardShortcut(.downArrow, modifiers: .option)
                 Divider()
                 Button("Reset View") { store.resetCamera() }

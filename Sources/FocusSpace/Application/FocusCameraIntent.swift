@@ -29,8 +29,8 @@ struct FocusCameraIntent: Equatable, Sendable {
                     y: min(max(target.y, -4.2), 4.2)
                 ),
                 targetAttention: min(max(targetAttention, 0), 1),
-                yaw: min(max(yaw, -38), 38),
-                pitch: min(max(pitch, -20), 20),
+                yaw: min(max(yaw, -55), 55),
+                pitch: min(max(pitch, -34), 34),
                 distance: min(max(distance, 4.2), 14.5)
             )
         }

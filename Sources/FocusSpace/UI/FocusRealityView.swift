@@ -2,13 +2,6 @@ import RealityKit
 import SwiftUI
 
 struct FocusRealityView: View {
-    enum NavigationMode: String, CaseIterable, Identifiable {
-        case pan = "Pan"
-        case orbit = "Orbit"
-        var id: Self { self }
-        var icon: String { self == .pan ? "hand.draw" : "rotate.3d" }
-    }
-
     @ObservedObject var store: FocusSpaceStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var renderer = RealityFocusRenderer()
@@ -16,7 +9,6 @@ struct FocusRealityView: View {
     @State private var cameraDragOrigin: FocusCameraIntent.Pose?
     @State private var magnifyOrigin: FocusCameraIntent.Pose?
     @State private var rotationOrigin: FocusCameraIntent.Pose?
-    @State private var navigationMode: NavigationMode = .pan
     @State private var controlsVisible = true
     @State private var controlsTask: Task<Void, Never>?
     @State private var idleReturnTask: Task<Void, Never>?
@@ -53,7 +45,7 @@ struct FocusRealityView: View {
         }
         .background(WorkspaceBackground())
         .overlay(alignment: .bottomLeading) {
-            Text("Drag nodes to arrange · drag empty space to \(navigationMode.rawValue.lowercased()) · ⌘0 resets")
+            Text("Drag nodes to arrange · drag empty space to move the universe · ⌘0 resets")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(14)
@@ -97,6 +89,10 @@ struct FocusRealityView: View {
                 } else {
                     store.move(id, to: SpatialPoint(x: origin.x + dx, y: origin.y + dy))
                 }
+                if let entity = nodeEntity(from: value.entity),
+                   let item = store.sceneSnapshot.items.first(where: { $0.id == id }) {
+                    renderer.previewNodeTransform(entity: entity, item: item)
+                }
             }
             .onEnded { value in
                 if let id = nodeID(from: value.entity) { dragOrigins[id] = nil }
@@ -110,19 +106,12 @@ struct FocusRealityView: View {
                 let origin = cameraDragOrigin ?? store.cameraIntent.pose
                 cameraDragOrigin = origin
                 noteNavigationActivity(scheduleIdleReturn: false)
-                if navigationMode == .pan {
-                    store.panCamera(
-                        horizontal: value.translation.width,
-                        vertical: value.translation.height,
-                        from: origin
-                    )
-                } else {
-                    store.orbitCamera(
-                        horizontal: value.translation.width,
-                        vertical: value.translation.height,
-                        from: origin
-                    )
-                }
+                store.orbitCamera(
+                    horizontal: value.translation.width,
+                    vertical: value.translation.height,
+                    from: origin
+                )
+                renderer.previewCamera(intent: store.cameraIntent, reduceMotion: reduceMotion)
             }
             .onEnded { _ in
                 cameraDragOrigin = nil
@@ -149,7 +138,7 @@ struct FocusRealityView: View {
             .onChanged { value in
                 let origin = rotationOrigin ?? store.cameraIntent.pose
                 rotationOrigin = origin
-                store.orbitCamera(horizontal: value.rotation.degrees / 0.16, vertical: 0, from: origin)
+                store.orbitCamera(horizontal: value.rotation.degrees / 0.28, vertical: 0, from: origin)
                 noteNavigationActivity(scheduleIdleReturn: false)
             }
             .onEnded { _ in
@@ -170,19 +159,10 @@ struct FocusRealityView: View {
 
     private var navigationControls: some View {
         HStack(spacing: 5) {
-            ForEach(NavigationMode.allCases) { mode in
-                Button {
-                    navigationMode = mode
-                    noteNavigationActivity()
-                } label: {
-                    Label(mode.rawValue, systemImage: mode.icon)
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(navigationMode == mode ? Color.primary : Color.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(navigationMode == mode ? Color.accentColor.opacity(0.18) : .clear, in: .rect(cornerRadius: 8))
-            }
+            Label("Move universe", systemImage: "rotate.3d")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
             Divider().frame(height: 22)
             Button("Zoom out", systemImage: "minus.magnifyingglass") {
                 store.zoomCamera(by: 0.84, animated: true)
@@ -241,10 +221,14 @@ struct FocusRealityView: View {
     }
 
     private func nodeID(from entity: Entity) -> UUID? {
+        nodeEntity(from: entity).flatMap { UUID(uuidString: String($0.name.dropFirst(5))) }
+    }
+
+    private func nodeEntity(from entity: Entity) -> Entity? {
         var candidate: Entity? = entity
         while let current = candidate {
             if current.name.hasPrefix("node-") {
-                return UUID(uuidString: String(current.name.dropFirst(5)))
+                return current
             }
             candidate = current.parent
         }
