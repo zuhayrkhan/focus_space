@@ -44,7 +44,7 @@ final class FocusMapTests: XCTestCase {
         let text = try String(contentsOf: repository.fileURL, encoding: .utf8)
         XCTAssertTrue(text.contains("\n"))
         XCTAssertTrue(text.contains("Explore depth"))
-        XCTAssertTrue(text.contains("\"version\" : 3"))
+        XCTAssertTrue(text.contains("\"version\" : 4"))
         XCTAssertTrue(text.contains("Shown when this thought is selected."))
         XCTAssertTrue(text.contains("\"kind\" : \"reference\""))
         XCTAssertTrue(text.contains("\"urgency\" : \"overdue\""))
@@ -79,5 +79,40 @@ final class FocusMapTests: XCTestCase {
         XCTAssertEqual(migrated.nodes.first?.urgency, FocusNodeUrgency.none)
         XCTAssertEqual(migrated.nodes.first?.isEnabled, true)
         XCTAssertEqual(migrated.nodes.first?.notes, "")
+        XCTAssertFalse(migrated.isGravityEnabled)
+        XCTAssertNil(migrated.nodes.first?.dueDate)
+        XCTAssertNil(migrated.nodes.first?.milestoneDate)
+        XCTAssertNil(migrated.nodes.first?.reminderDate)
+        XCTAssertNil(migrated.nodes.first?.lastManualOverride)
+        XCTAssertEqual(migrated.nodes.first?.gravityPreference, .inherit)
+    }
+
+    func testVersionFourPersistsTemporalSignalsAndGravityPolicy() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let repository = JSONFocusMapRepository(fileURL: folder.appending(path: "map.json"))
+        let due = Date(timeIntervalSince1970: 1_800_086_400)
+        let milestone = due.addingTimeInterval(86_400)
+        let reminder = due.addingTimeInterval(-3_600)
+        let override = due.addingTimeInterval(-86_400)
+        let node = FocusNode(
+            title: "Time-aware thought",
+            attention: 0.4,
+            dueDate: due,
+            milestoneDate: milestone,
+            reminderDate: reminder,
+            lastManualOverride: override,
+            gravityPreference: .enabled,
+            createdAt: due,
+            updatedAt: due
+        )
+        let original = FocusMap(nodes: [node], isGravityEnabled: true)
+
+        try repository.save(original)
+        let loaded = try XCTUnwrap(repository.load())
+
+        XCTAssertEqual(loaded, original)
+        XCTAssertEqual(loaded.version, 4)
+        XCTAssertTrue(loaded.isGravityEnabled)
+        XCTAssertEqual(loaded.nodes.first?.gravityPreference, .enabled)
     }
 }

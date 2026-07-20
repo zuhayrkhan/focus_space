@@ -266,7 +266,21 @@ final class RealityFocusRenderer {
             isExpanded: item.isSelected && !item.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             colorVariation: colorVariation(for: item.id)
         )
-        entity.position = position(for: item)
+        let targetPosition = position(for: item)
+        if let previous,
+           previous.attention != item.attention,
+           item.isGravityInfluenced,
+           !isAmbientMotionPaused {
+            let target = Transform(
+                scale: entity.transform.scale,
+                rotation: entity.transform.rotation,
+                translation: targetPosition
+            )
+            entity.stopAllAnimations(recursive: false)
+            entity.move(to: target, relativeTo: entity.parent, duration: 0.72, timingFunction: .easeInOut)
+        } else {
+            entity.position = targetPosition
+        }
         guard needsVisualUpdate(from: previous, to: item) else { return }
         let contextOpacity: Float = switch item.contextRole {
         case .subdued: 0.50
@@ -300,6 +314,9 @@ final class RealityFocusRenderer {
             || previous.notes != item.notes
             || previous.kind != item.kind
             || previous.attention != item.attention
+            || previous.manualAttention != item.manualAttention
+            || previous.gravityReason != item.gravityReason
+            || previous.isGravityInfluenced != item.isGravityInfluenced
             || previous.hierarchyDepth != item.hierarchyDepth
             || previous.urgency != item.urgency
             || previous.isEnabled != item.isEnabled

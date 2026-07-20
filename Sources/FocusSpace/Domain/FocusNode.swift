@@ -47,6 +47,11 @@ struct FocusNode: Identifiable, Codable, Equatable, Sendable {
     var relatedNodeIDs: Set<UUID>
     var urgency: FocusNodeUrgency
     var isEnabled: Bool
+    var dueDate: Date?
+    var milestoneDate: Date?
+    var reminderDate: Date?
+    var lastManualOverride: Date?
+    var gravityPreference: GravityPreference
     var createdAt: Date
     var updatedAt: Date
 
@@ -61,6 +66,11 @@ struct FocusNode: Identifiable, Codable, Equatable, Sendable {
         relatedNodeIDs: Set<UUID> = [],
         urgency: FocusNodeUrgency = .none,
         isEnabled: Bool = true,
+        dueDate: Date? = nil,
+        milestoneDate: Date? = nil,
+        reminderDate: Date? = nil,
+        lastManualOverride: Date? = nil,
+        gravityPreference: GravityPreference = .inherit,
         createdAt: Date = .now,
         updatedAt: Date = .now
     ) {
@@ -74,6 +84,11 @@ struct FocusNode: Identifiable, Codable, Equatable, Sendable {
         self.relatedNodeIDs = relatedNodeIDs
         self.urgency = urgency
         self.isEnabled = isEnabled
+        self.dueDate = dueDate
+        self.milestoneDate = milestoneDate
+        self.reminderDate = reminderDate
+        self.lastManualOverride = lastManualOverride
+        self.gravityPreference = gravityPreference
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -81,6 +96,7 @@ struct FocusNode: Identifiable, Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, title, notes, kind, position, attention, parentID, relatedNodeIDs
         case urgency, isEnabled, createdAt, updatedAt
+        case dueDate, milestoneDate, reminderDate, lastManualOverride, gravityPreference
     }
 
     init(from decoder: Decoder) throws {
@@ -95,12 +111,18 @@ struct FocusNode: Identifiable, Codable, Equatable, Sendable {
         relatedNodeIDs = try container.decodeIfPresent(Set<UUID>.self, forKey: .relatedNodeIDs) ?? []
         urgency = try container.decodeIfPresent(FocusNodeUrgency.self, forKey: .urgency) ?? .none
         isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        dueDate = try container.decodeIfPresent(Date.self, forKey: .dueDate)
+        milestoneDate = try container.decodeIfPresent(Date.self, forKey: .milestoneDate)
+        reminderDate = try container.decodeIfPresent(Date.self, forKey: .reminderDate)
+        lastManualOverride = try container.decodeIfPresent(Date.self, forKey: .lastManualOverride)
+        gravityPreference = try container.decodeIfPresent(GravityPreference.self, forKey: .gravityPreference) ?? .inherit
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
     }
 
-    mutating func setAttention(_ value: Double) {
+    mutating func setAttention(_ value: Double, manualOverrideAt: Date = .now) {
         attention = Self.clamp(value)
+        lastManualOverride = manualOverrideAt
         updatedAt = .now
     }
 

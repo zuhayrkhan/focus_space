@@ -20,16 +20,23 @@ final class FocusSpaceStore: ObservableObject {
     @Published private(set) var cameraIntent: FocusCameraIntent = .canonical
     @Published private(set) var demoScene: DemoScene?
     @Published private(set) var persistenceMessage: String?
+    @Published private(set) var gravityEvaluationDate: Date
 
     private let repository: any FocusMapRepository
+    private let nowProvider: () -> Date
     private var undoMaps: [FocusMap] = []
     private var redoMaps: [FocusMap] = []
     private var isInteracting = false
     private var saveTask: Task<Void, Never>?
     private var personalMapBeforeDemo: FocusMap?
 
-    init(repository: any FocusMapRepository = JSONFocusMapRepository()) {
+    init(
+        repository: any FocusMapRepository = JSONFocusMapRepository(),
+        nowProvider: @escaping () -> Date = Date.init
+    ) {
         self.repository = repository
+        self.nowProvider = nowProvider
+        gravityEvaluationDate = nowProvider()
         do {
             map = try repository.load() ?? Self.sampleMap
         } catch {
@@ -54,6 +61,8 @@ final class FocusSpaceStore: ObservableObject {
         let contextIDs = contextID.map(contextNodeIDs(around:)) ?? []
         let ancestryIDs = Set(contextID.map(map.ancestors(of:)) ?? [])
         let items = map.nodes.map { node in
+            let gravity = gravityAssessment(for: node)
+            let effectiveAttention = gravity.attention
             let includedByFilter: Bool = switch filter {
             case .today: node.attention >= 0.42
             case .all: true
@@ -66,10 +75,13 @@ final class FocusSpaceStore: ObservableObject {
                 notes: node.notes,
                 kind: node.kind,
                 position: node.position,
-                attention: node.attention,
+                attention: effectiveAttention,
+                manualAttention: node.attention,
+                gravityReason: gravity.reason,
+                isGravityInfluenced: gravity.isInfluencing,
                 parentID: node.parentID,
                 hierarchyDepth: hierarchyDepth(of: node),
-                urgency: node.urgency,
+                urgency: strongestUrgency(node.urgency, gravity.urgency),
                 isEnabled: node.isEnabled,
                 isSelected: selection == node.id,
                 isDimmed: !includedByFilter || !includedBySearch,
@@ -238,7 +250,10 @@ final class FocusSpaceStore: ObservableObject {
     }
 
     func setAttention(_ id: UUID, to attention: Double) {
-        mutate(recordingUndo: !isInteracting) { $0.updateNode(id: id) { $0.setAttention(attention) } }
+        let now = nowProvider()
+        mutate(recordingUndo: !isInteracting) {
+            $0.updateNode(id: id) { $0.setAttention(attention, manualOverrideAt: now) }
+        }
     }
 
     func setBranchAttention(
@@ -249,10 +264,11 @@ final class FocusSpaceStore: ObservableObject {
     ) {
         guard let origin = originAttentions[rootID] else { return }
         let delta = rootAttention - origin
+        let now = nowProvider()
         mutate(recordingUndo: !isInteracting) { map in
             for id in nodeIDs {
                 guard let original = originAttentions[id] else { continue }
-                map.updateNode(id: id) { $0.setAttention(original + delta) }
+                map.updateNode(id: id) { $0.setAttention(original + delta, manualOverrideAt: now) }
             }
         }
     }
@@ -326,6 +342,62 @@ final class FocusSpaceStore: ObservableObject {
         } }
     }
 
+    func setGravityEnabled(_ isEnabled: Bool) {
+        mutate { $0.isGravityEnabled = isEnabled }
+        gravityEvaluationDate = nowProvider()
+    }
+
+    func setGravityPreference(_ id: UUID, to preference: GravityPreference) {
+        mutate { $0.updateNode(id: id) { node in
+            node.gravityPreference = preference
+            node.updatedAt = nowProvider()
+        } }
+        gravityEvaluationDate = nowProvider()
+    }
+
+    func setDueDate(_ id: UUID, to date: Date?) {
+        setTemporalSignal(id, keyPath: \.dueDate, to: date)
+    }
+
+    func setMilestoneDate(_ id: UUID, to date: Date?) {
+        setTemporalSignal(id, keyPath: \.milestoneDate, to: date)
+    }
+
+    func setReminderDate(_ id: UUID, to date: Date?) {
+        setTemporalSignal(id, keyPath: \.reminderDate, to: date)
+    }
+
+    func releaseManualGravityOverride(_ id: UUID) {
+        mutate { $0.updateNode(id: id) { node in
+            node.lastManualOverride = nil
+            node.updatedAt = nowProvider()
+        } }
+        gravityEvaluationDate = nowProvider()
+    }
+
+    func refreshGravity() {
+        gravityEvaluationDate = nowProvider()
+    }
+
+    func gravityAssessment(for node: FocusNode) -> GravityAssessment {
+        let isEnabled = switch node.gravityPreference {
+        case .enabled: true
+        case .disabled: false
+        case .inherit: map.isGravityEnabled
+        }
+        guard isEnabled else {
+            return GravityAssessment(
+                attention: node.attention,
+                urgency: node.urgency,
+                reason: node.gravityPreference == .disabled
+                    ? "Gravity is off for this thought."
+                    : "Workspace gravity is off.",
+                isInfluencing: false
+            )
+        }
+        return GravityEngine.assess(node, at: gravityEvaluationDate)
+    }
+
     func beginInteraction() {
         guard !isInteracting else { return }
         isInteracting = true
@@ -373,7 +445,11 @@ final class FocusSpaceStore: ObservableObject {
             attention: copy.attention,
             parentID: copy.parentID,
             urgency: copy.urgency,
-            isEnabled: copy.isEnabled
+            isEnabled: copy.isEnabled,
+            dueDate: copy.dueDate,
+            milestoneDate: copy.milestoneDate,
+            reminderDate: copy.reminderDate,
+            gravityPreference: copy.gravityPreference
         )
         mutate { $0.nodes.append(copy) }
         selection = copy.id
@@ -431,6 +507,26 @@ final class FocusSpaceStore: ObservableObject {
 
     private func validateSelection() {
         if let selection, map.node(id: selection) == nil { self.selection = nil }
+    }
+
+    private func setTemporalSignal(
+        _ id: UUID,
+        keyPath: WritableKeyPath<FocusNode, Date?>,
+        to date: Date?
+    ) {
+        mutate { $0.updateNode(id: id) { node in
+            node[keyPath: keyPath] = date
+            node.updatedAt = nowProvider()
+        } }
+        gravityEvaluationDate = nowProvider()
+    }
+
+    private func strongestUrgency(
+        _ manual: FocusNodeUrgency,
+        _ computed: FocusNodeUrgency
+    ) -> FocusNodeUrgency {
+        let rank: [FocusNodeUrgency: Int] = [.none: 0, .soon: 1, .overdue: 2]
+        return (rank[computed] ?? 0) > (rank[manual] ?? 0) ? computed : manual
     }
 
     private func hierarchyDepth(of node: FocusNode) -> Int {

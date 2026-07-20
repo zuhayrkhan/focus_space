@@ -1,19 +1,21 @@
 import Foundation
 
 struct FocusMap: Codable, Equatable, Sendable {
-    static let currentVersion = 3
+    static let currentVersion = 4
 
     private(set) var version = Self.currentVersion
     var title: String
     var nodes: [FocusNode]
+    var isGravityEnabled: Bool
 
-    init(title: String = "My Focus Space", nodes: [FocusNode] = []) {
+    init(title: String = "My Focus Space", nodes: [FocusNode] = [], isGravityEnabled: Bool = false) {
         self.title = title
         self.nodes = nodes
+        self.isGravityEnabled = isGravityEnabled
     }
 
     private enum CodingKeys: String, CodingKey {
-        case version, title, nodes
+        case version, title, nodes, isGravityEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -22,6 +24,7 @@ struct FocusMap: Codable, Equatable, Sendable {
         version = Self.currentVersion
         title = try container.decode(String.self, forKey: .title)
         nodes = try container.decode([FocusNode].self, forKey: .nodes)
+        isGravityEnabled = try container.decodeIfPresent(Bool.self, forKey: .isGravityEnabled) ?? false
     }
 
     func node(id: UUID) -> FocusNode? {

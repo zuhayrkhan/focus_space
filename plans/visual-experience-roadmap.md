@@ -1,6 +1,6 @@
 # Focus Space visual experience roadmap
 
-Status: Milestones 0–5 complete; Milestone 6 next
+Status: Milestones 0–6 complete; Milestone 7 next
 
 North star: the polished Focus Space concept supplied on 18 July 2026
 
@@ -146,6 +146,8 @@ Definition of done:
 - Accidental reprioritisation is rare and easily undone.
 
 ## Milestone 6 — Gravity and time
+
+Status: complete on 20 July 2026
 
 Goal: implement the concept’s automatic pull without taking agency away from the user.
 

@@ -43,6 +43,13 @@ struct ContentView: View {
             store.addChild(to: store.selection)
             return .handled
         }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                guard !Task.isCancelled else { return }
+                store.refreshGravity()
+            }
+        }
     }
 
     private var sidebar: some View {
@@ -89,6 +96,20 @@ struct ContentView: View {
                 .labelsHidden()
                 .pickerStyle(.menu)
             }
+            .padding(.horizontal, 12)
+            .padding(.top, 6)
+            Toggle(isOn: Binding(
+                get: { store.map.isGravityEnabled },
+                set: store.setGravityEnabled
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Label("Gravity & time", systemImage: "clock.arrow.trianglehead.2.counterclockwise.rotate.90")
+                    Text(store.map.isGravityEnabled ? "Time can suggest depth" : "Manual depth only")
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+            }
+            .toggleStyle(.switch)
             .padding(.horizontal, 12)
             .padding(.top, 6)
             Spacer()

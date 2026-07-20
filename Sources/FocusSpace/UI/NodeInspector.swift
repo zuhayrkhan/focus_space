@@ -59,6 +59,7 @@ struct NodeInspector: View {
                     .onChange(of: notesFocused) { _, focused in
                         if focused { store.beginInteraction() } else { store.endInteraction() }
                     }
+                    gravitySection(node)
                     VStack(alignment: .leading, spacing: 8) {
                         Picker("Depth stop", selection: Binding<AttentionBand?>(
                             get: {
@@ -121,6 +122,98 @@ struct NodeInspector: View {
         case 0.25..<0.6: "Within reach"
         case 0.6..<0.85: "In active focus"
         default: "Closest to you"
+        }
+    }
+
+    @ViewBuilder
+    private func gravitySection(_ node: FocusNode) -> some View {
+        let assessment = store.gravityAssessment(for: node)
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 10) {
+                Picker("Gravity", selection: Binding(
+                    get: { store.selectedNode?.gravityPreference ?? .inherit },
+                    set: { store.setGravityPreference(node.id, to: $0) }
+                )) {
+                    ForEach(GravityPreference.allCases) { preference in
+                        Text(preference.displayName).tag(preference)
+                    }
+                }
+                OptionalDateRow(
+                    title: "Due date",
+                    value: Binding(
+                        get: { store.selectedNode?.dueDate },
+                        set: { store.setDueDate(node.id, to: $0) }
+                    ),
+                    defaultOffset: 7 * 86_400
+                )
+                OptionalDateRow(
+                    title: "Milestone",
+                    value: Binding(
+                        get: { store.selectedNode?.milestoneDate },
+                        set: { store.setMilestoneDate(node.id, to: $0) }
+                    ),
+                    defaultOffset: 14 * 86_400
+                )
+                OptionalDateRow(
+                    title: "Reminder",
+                    value: Binding(
+                        get: { store.selectedNode?.reminderDate },
+                        set: { store.setReminderDate(node.id, to: $0) }
+                    ),
+                    defaultOffset: 86_400
+                )
+                VStack(alignment: .leading, spacing: 5) {
+                    if assessment.isInfluencing {
+                        Label(
+                            "Gravity suggests \(assessment.attention.formatted(.percent.precision(.fractionLength(0))))",
+                            systemImage: "arrow.up.forward"
+                        )
+                        .foregroundStyle(.cyan)
+                    }
+                    Text(assessment.reason)
+                        .foregroundStyle(.secondary)
+                    if node.lastManualOverride != nil,
+                       assessment.reason.hasPrefix("Manual attention holds") {
+                        Button("Let gravity resume now") {
+                            store.releaseManualGravityOverride(node.id)
+                        }
+                        .buttonStyle(.link)
+                    }
+                }
+                .font(.caption)
+            }
+            .padding(.top, 8)
+        } label: {
+            Label("Gravity & time", systemImage: assessment.isInfluencing ? "clock.badge.exclamationmark" : "clock")
+                .font(.callout.weight(.semibold))
+        }
+    }
+}
+
+private struct OptionalDateRow: View {
+    let title: String
+    @Binding var value: Date?
+    let defaultOffset: TimeInterval
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Toggle(title, isOn: Binding(
+                get: { value != nil },
+                set: { enabled in
+                    value = enabled ? Date.now.addingTimeInterval(defaultOffset) : nil
+                }
+            ))
+            if value != nil {
+                DatePicker(
+                    title,
+                    selection: Binding(
+                        get: { value ?? Date.now },
+                        set: { value = $0 }
+                    ),
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                .labelsHidden()
+            }
         }
     }
 }

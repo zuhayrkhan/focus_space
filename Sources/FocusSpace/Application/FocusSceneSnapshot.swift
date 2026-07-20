@@ -15,6 +15,9 @@ struct FocusSceneSnapshot: Equatable, Sendable {
         let kind: FocusNodeKind
         let position: SpatialPoint
         let attention: Double
+        let manualAttention: Double
+        let gravityReason: String?
+        let isGravityInfluenced: Bool
         let parentID: UUID?
         let hierarchyDepth: Int
         let urgency: FocusNodeUrgency
@@ -31,6 +34,9 @@ struct FocusSceneSnapshot: Equatable, Sendable {
             kind: FocusNodeKind,
             position: SpatialPoint,
             attention: Double,
+            manualAttention: Double? = nil,
+            gravityReason: String? = nil,
+            isGravityInfluenced: Bool = false,
             parentID: UUID?,
             hierarchyDepth: Int,
             urgency: FocusNodeUrgency,
@@ -46,6 +52,9 @@ struct FocusSceneSnapshot: Equatable, Sendable {
             self.kind = kind
             self.position = position
             self.attention = attention
+            self.manualAttention = manualAttention ?? attention
+            self.gravityReason = gravityReason
+            self.isGravityInfluenced = isGravityInfluenced
             self.parentID = parentID
             self.hierarchyDepth = hierarchyDepth
             self.urgency = urgency
