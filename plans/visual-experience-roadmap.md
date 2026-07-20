@@ -1,6 +1,6 @@
 # Focus Space visual experience roadmap
 
-Status: Milestones 0–4 complete; Milestone 5 proposed
+Status: Milestones 0–5 complete; Milestone 6 next
 
 North star: the polished Focus Space concept supplied on 18 July 2026
 
@@ -126,6 +126,8 @@ Definition of done:
 - A user can always recover orientation with one action.
 
 ## Milestone 5 — Refine depth manipulation
+
+Status: complete on 20 July 2026
 
 Goal: make pulling work forward the signature interaction rather than a disguised slider.
 

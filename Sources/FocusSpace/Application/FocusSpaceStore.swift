@@ -241,6 +241,22 @@ final class FocusSpaceStore: ObservableObject {
         mutate(recordingUndo: !isInteracting) { $0.updateNode(id: id) { $0.setAttention(attention) } }
     }
 
+    func setBranchAttention(
+        rootID: UUID,
+        nodeIDs: Set<UUID>,
+        originAttentions: [UUID: Double],
+        rootAttention: Double
+    ) {
+        guard let origin = originAttentions[rootID] else { return }
+        let delta = rootAttention - origin
+        mutate(recordingUndo: !isInteracting) { map in
+            for id in nodeIDs {
+                guard let original = originAttentions[id] else { continue }
+                map.updateNode(id: id) { $0.setAttention(original + delta) }
+            }
+        }
+    }
+
     func shiftAttention(_ id: UUID, by delta: Double) {
         guard let node = map.node(id: id) else { return }
         setAttention(id, to: node.attention + delta)

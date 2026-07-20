@@ -154,6 +154,25 @@ final class RealityFocusRenderer {
         reconcileRelationships(root: sceneRoot, snapshot: preview)
     }
 
+    func previewDepthDrag(
+        items: [FocusSceneSnapshot.Item],
+        snapshot: FocusSceneSnapshot
+    ) {
+        guard let sceneRoot else { return }
+        let replacements = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+        for item in items {
+            guard let entity = sceneRoot.findEntity(named: "node-\(item.id.uuidString)") else { continue }
+            entity.position = position(for: item)
+            let depthScale = Float(0.78 + item.attention * 0.24)
+            entity.scale = SIMD3<Float>(repeating: depthScale)
+        }
+        let preview = FocusSceneSnapshot(
+            items: snapshot.items.map { replacements[$0.id] ?? $0 },
+            relationships: snapshot.relationships
+        )
+        reconcileRelationships(root: sceneRoot, snapshot: preview)
+    }
+
     private func makeCamera() -> PerspectiveCamera {
         let camera = PerspectiveCamera()
         camera.name = "focus-camera"

@@ -60,6 +60,21 @@ struct NodeInspector: View {
                         if focused { store.beginInteraction() } else { store.endInteraction() }
                     }
                     VStack(alignment: .leading, spacing: 8) {
+                        Picker("Depth stop", selection: Binding<AttentionBand?>(
+                            get: {
+                                AttentionBand.allCases.first {
+                                    abs($0.attention - (store.selectedNode?.attention ?? 0)) < 0.001
+                                }
+                            },
+                            set: { band in
+                                if let band { store.setAttention(node.id, to: band.attention) }
+                            }
+                        )) {
+                            Text("Custom").tag(AttentionBand?.none)
+                            ForEach(AttentionBand.allCases) { band in
+                                Text(band.displayName).tag(Optional(band))
+                            }
+                        }
                         HStack {
                             Text("Attention")
                             Spacer()

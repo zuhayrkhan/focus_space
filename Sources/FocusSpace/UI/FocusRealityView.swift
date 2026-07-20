@@ -9,9 +9,8 @@ struct FocusRealityView: View {
     @AppStorage("nodeLegendCorner") private var legendCornerRaw = LegendCorner.topTrailing.rawValue
     @State private var renderer = RealityFocusRenderer()
     @State private var dragOrigins: [UUID: SpatialPoint] = [:]
-    @State private var dragAttentionOrigins: [UUID: Double] = [:]
     @State private var dragSnapshots: [UUID: FocusSceneSnapshot] = [:]
-    @State private var depthDragIDs: Set<UUID> = []
+    @State private var depthDragSession: DepthDragSession?
     @State private var cameraDragOrigin: FocusCameraIntent.Pose?
     @State private var magnifyOrigin: FocusCameraIntent.Pose?
     @State private var rotationOrigin: FocusCameraIntent.Pose?
@@ -73,6 +72,16 @@ struct FocusRealityView: View {
                 .padding(14)
         }
         .overlay(alignment: legendCorner.alignment) { nodeLegend }
+        .overlay(alignment: .trailing) {
+            if let depthDragSession {
+                DepthGuideView(
+                    landing: depthDragSession.landing,
+                    movesBranch: depthDragSession.nodeIDs.count > 1
+                )
+                .padding(.trailing, 18)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
         .overlay(alignment: .bottom) { navigationControls }
         .onGeometryChange(for: CGSize.self) { proxy in
             proxy.size
@@ -116,49 +125,85 @@ struct FocusRealityView: View {
             .onChanged { value in
                 guard let id = nodeID(from: value.entity), let node = store.map.node(id: id) else { return }
                 let origin = dragOrigins[id] ?? node.position
-                let attentionOrigin = dragAttentionOrigins[id] ?? node.attention
                 if dragOrigins[id] == nil {
                     store.beginInteraction()
                     dragSnapshots[id] = store.sceneSnapshot
-                    dragAttentionOrigins[id] = node.attention
                     if NSApp.currentEvent?.modifierFlags.contains(.option) == true {
-                        depthDragIDs.insert(id)
+                        let isolatesNode = NSApp.currentEvent?.modifierFlags.contains(.command) == true
+                        let nodeIDs = isolatesNode
+                            ? Set([id])
+                            : store.map.descendants(of: id).union([id])
+                        let origins = Dictionary(uniqueKeysWithValues: store.map.nodes.compactMap { candidate in
+                            nodeIDs.contains(candidate.id) ? (candidate.id, candidate.attention) : nil
+                        })
+                        depthDragSession = DepthDragSession(
+                            rootID: id,
+                            nodeIDs: nodeIDs,
+                            originAttentions: origins,
+                            snapshot: store.sceneSnapshot,
+                            landing: DepthManipulation.landing(for: node.attention)
+                        )
                     }
                 }
                 dragOrigins[id] = origin
+
+                if var session = depthDragSession, session.rootID == id {
+                    let rawAttention = DepthManipulation.attention(
+                        origin: session.originAttentions[id] ?? node.attention,
+                        verticalTranslation: value.translation.height,
+                        viewportHeight: canvasSize.height,
+                        cameraDistance: store.cameraIntent.pose.distance
+                    )
+                    let landing = DepthManipulation.landing(for: rawAttention)
+                    session.landing = landing
+                    depthDragSession = session
+                    let delta = landing.attention - (session.originAttentions[id] ?? node.attention)
+                    let previewItems = session.snapshot.items.compactMap { item -> FocusSceneSnapshot.Item? in
+                        guard session.nodeIDs.contains(item.id),
+                              let original = session.originAttentions[item.id] else { return nil }
+                        return previewItem(
+                            item,
+                            position: item.position,
+                            attention: original + delta
+                        )
+                    }
+                    renderer.previewDepthDrag(items: previewItems, snapshot: session.snapshot)
+                    return
+                }
+
                 let dx = Double(value.translation.width / 115)
                 let dy = Double(-value.translation.height / 115)
-                let previewPosition = depthDragIDs.contains(id)
-                    ? origin
-                    : SpatialPoint(x: origin.x + dx, y: origin.y + dy)
-                let previewAttention = depthDragIDs.contains(id)
-                    ? min(max(attentionOrigin + dy * 0.015, 0), 1)
-                    : attentionOrigin
                 if let entity = nodeEntity(from: value.entity),
                    let snapshot = dragSnapshots[id],
                    let base = snapshot.items.first(where: { $0.id == id }) {
                     renderer.previewNodeDrag(
                         entity: entity,
-                        item: previewItem(base, position: previewPosition, attention: previewAttention),
+                        item: previewItem(
+                            base,
+                            position: SpatialPoint(x: origin.x + dx, y: origin.y + dy),
+                            attention: node.attention
+                        ),
                         snapshot: snapshot
                     )
                 }
             }
             .onEnded { value in
-                if let id = nodeID(from: value.entity),
-                   let origin = dragOrigins[id],
-                   let attentionOrigin = dragAttentionOrigins[id] {
+                if let id = nodeID(from: value.entity), let origin = dragOrigins[id] {
                     let dx = Double(value.translation.width / 115)
                     let dy = Double(-value.translation.height / 115)
-                    if depthDragIDs.contains(id) {
-                        store.setAttention(id, to: attentionOrigin + dy * 0.015)
+                    if let session = depthDragSession, session.rootID == id {
+                        store.setBranchAttention(
+                            rootID: id,
+                            nodeIDs: session.nodeIDs,
+                            originAttentions: session.originAttentions,
+                            rootAttention: session.landing.attention
+                        )
                     } else {
                         store.move(id, to: SpatialPoint(x: origin.x + dx, y: origin.y + dy))
                     }
                     dragOrigins[id] = nil
-                    dragAttentionOrigins[id] = nil
                     dragSnapshots[id] = nil
-                    depthDragIDs.remove(id)
+                    depthDragSession = nil
                 }
                 store.endInteraction()
             }
@@ -430,6 +475,64 @@ struct FocusRealityView: View {
             candidate = current.parent
         }
         return nil
+    }
+}
+
+private struct DepthDragSession {
+    let rootID: UUID
+    let nodeIDs: Set<UUID>
+    let originAttentions: [UUID: Double]
+    let snapshot: FocusSceneSnapshot
+    var landing: DepthManipulation.Landing
+}
+
+private struct DepthGuideView: View {
+    let landing: DepthManipulation.Landing
+    let movesBranch: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(movesBranch ? "Moving branch" : "Moving in depth", systemImage: "move.3d")
+                .font(.caption.weight(.semibold))
+            GeometryReader { proxy in
+                let height = proxy.size.height
+                ZStack(alignment: .topLeading) {
+                    Capsule()
+                        .fill(.white.opacity(0.16))
+                        .frame(width: 2, height: height)
+                        .offset(x: 7)
+                    ForEach(AttentionBand.allCases) { band in
+                        let y = (1 - band.attention) * height
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(landing.band == band ? Color.accentColor : .white.opacity(0.32))
+                                .frame(width: landing.band == band ? 10 : 6, height: landing.band == band ? 10 : 6)
+                            Text(band.displayName)
+                                .foregroundStyle(landing.band == band ? .primary : .secondary)
+                        }
+                        .font(.caption2)
+                        .position(x: 55, y: y)
+                    }
+                    Circle()
+                        .fill(.white)
+                        .shadow(color: .blue.opacity(0.8), radius: 7)
+                        .frame(width: 9, height: 9)
+                        .position(x: 8, y: (1 - landing.attention) * height)
+                }
+            }
+            .frame(height: 205)
+            Text(landing.band?.displayName ?? landing.attention.formatted(.percent.precision(.fractionLength(0))))
+                .font(.caption.weight(.medium))
+                .foregroundStyle(landing.band == nil ? .secondary : .primary)
+            Text("⌥ drag · ⌘⌥ isolates one item")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(12)
+        .frame(width: 142)
+        .background(.ultraThinMaterial, in: .rect(cornerRadius: 13))
+        .overlay { RoundedRectangle(cornerRadius: 13).stroke(.white.opacity(0.10)) }
+        .shadow(color: .black.opacity(0.28), radius: 18, y: 8)
     }
 }
 

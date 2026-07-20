@@ -503,6 +503,62 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertEqual(pose.distance, 18)
     }
 
+    func testDepthManipulationUsesCameraAwarePlaneAndMagneticStops() {
+        let nearCamera = DepthManipulation.attention(
+            origin: 0.5,
+            verticalTranslation: -70,
+            viewportHeight: 700,
+            cameraDistance: 7
+        )
+        let farCamera = DepthManipulation.attention(
+            origin: 0.5,
+            verticalTranslation: -70,
+            viewportHeight: 700,
+            cameraDistance: 14
+        )
+        XCTAssertGreaterThan(nearCamera, 0.5)
+        XCTAssertGreaterThan(farCamera, nearCamera)
+
+        let snapped = DepthManipulation.landing(for: 0.735)
+        XCTAssertEqual(snapped.band, .thisWeek)
+        XCTAssertEqual(snapped.attention, AttentionBand.thisWeek.attention)
+
+        let free = DepthManipulation.landing(for: 0.64)
+        XCTAssertNil(free.band)
+        XCTAssertEqual(free.attention, 0.64)
+    }
+
+    @MainActor
+    func testBranchDepthMovementPreservesOffsetsAndIsOneUndoableCommand() throws {
+        let rootNode = FocusNode(title: "Root", attention: 0.50)
+        let child = FocusNode(title: "Child", attention: 0.35, parentID: rootNode.id)
+        let unrelated = FocusNode(title: "Elsewhere", attention: 0.80)
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let repository = JSONFocusMapRepository(fileURL: folder.appending(path: "map.json"))
+        try repository.save(FocusMap(nodes: [rootNode, child, unrelated]))
+        let store = FocusSpaceStore(repository: repository)
+        let origins = Dictionary(uniqueKeysWithValues: store.map.nodes.map { ($0.id, $0.attention) })
+
+        store.beginInteraction()
+        store.setBranchAttention(
+            rootID: rootNode.id,
+            nodeIDs: [rootNode.id, child.id],
+            originAttentions: origins,
+            rootAttention: 0.74
+        )
+        store.endInteraction()
+
+        XCTAssertEqual(store.map.node(id: rootNode.id)?.attention, 0.74)
+        XCTAssertEqual(store.map.node(id: child.id)?.attention, 0.59)
+        XCTAssertEqual(store.map.node(id: unrelated.id)?.attention, 0.80)
+        XCTAssertTrue(store.canUndo)
+
+        store.undo()
+        XCTAssertEqual(store.map.node(id: rootNode.id)?.attention, 0.50)
+        XCTAssertEqual(store.map.node(id: child.id)?.attention, 0.35)
+        XCTAssertEqual(store.map.node(id: unrelated.id)?.attention, 0.80)
+    }
+
     @MainActor
     func testTrackpadMagnificationUsesOneStableGestureOriginInBothDirections() {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
