@@ -771,6 +771,31 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertEqual(store.cameraIntent.mode, .free)
     }
 
+    func testTrackpadPanLocksVerticalNodeGesturesToBranchDepth() {
+        let nodeID = UUID()
+
+        XCTAssertEqual(
+            TrackpadPanMode.pending(nodeID).resolved(for: CGSize(width: 1, height: 2)),
+            .pending(nodeID)
+        )
+        XCTAssertEqual(
+            TrackpadPanMode.pending(nodeID).resolved(for: CGSize(width: 2, height: 12)),
+            .branchDepth(nodeID)
+        )
+        XCTAssertEqual(
+            TrackpadPanMode.branchDepth(nodeID).resolved(for: CGSize(width: 40, height: 2)),
+            .branchDepth(nodeID)
+        )
+        XCTAssertEqual(
+            TrackpadPanMode.pending(nodeID).resolved(for: CGSize(width: 12, height: 2)),
+            .camera
+        )
+        XCTAssertEqual(
+            TrackpadPanMode.pending(nil).resolved(for: CGSize(width: 0, height: 12)),
+            .camera
+        )
+    }
+
     @MainActor
     func testUniverseDragIsDirectResponsiveAndUsesBothAxes() {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)

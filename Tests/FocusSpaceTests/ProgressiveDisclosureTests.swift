@@ -15,7 +15,7 @@ final class ProgressiveDisclosureTests: XCTestCase {
         XCTAssertTrue(progress.nextHint?.contains("Click") == true)
 
         progress.record(.selectedThought)
-        XCTAssertTrue(progress.nextHint?.contains("Option") == true)
+        XCTAssertTrue(progress.nextHint?.contains("Two-finger") == true)
 
         progress.record(.changedDepth)
         XCTAssertTrue(progress.nextHint?.contains("empty space") == true)

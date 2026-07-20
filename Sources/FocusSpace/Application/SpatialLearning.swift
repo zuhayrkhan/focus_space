@@ -21,7 +21,7 @@ enum SpatialGuideStep: Int, CaseIterable, Identifiable, Sendable {
         switch self {
         case .depth: "Near and bright means now. Far and quiet means deliberately parked."
         case .hierarchy: "Arrange parent ideas above their detail; links keep the structure readable."
-        case .branchMovement: "Option-drag a parent in depth to carry its branch. Add Command to pull one thought free."
+        case .branchMovement: "Two-finger drag vertically over a parent to carry its branch in depth. Option-drag remains available for pointer control."
         case .gravity: "Dates can gently pull work closer, but a manual move always wins for seven days."
         }
     }
@@ -50,7 +50,7 @@ struct SpatialLearningProgress: Equatable, Sendable {
 
     var nextHint: String? {
         if !contains(.selectedThought) { return "Click a thought to bring its branch into view." }
-        if !contains(.changedDepth) { return "Option-drag a thought up or down to change its attention." }
+        if !contains(.changedDepth) { return "Two-finger drag vertically over a thought to move its branch through attention." }
         if !contains(.navigatedUniverse) { return "Drag empty space to look around the universe. Command-0 always brings you home." }
         return nil
     }

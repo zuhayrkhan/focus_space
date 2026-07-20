@@ -18,6 +18,7 @@ struct FocusRealityView: View {
     @State private var cameraDragOrigin: FocusCameraIntent.Pose?
     @State private var magnifyOrigin: FocusCameraIntent.Pose?
     @State private var trackpadPanOrigin: FocusCameraIntent.Pose?
+    @State private var trackpadPanMode: TrackpadPanMode?
     @State private var rotationOrigin: FocusCameraIntent.Pose?
     @State private var controlsVisible = true
     @State private var controlsTask: Task<Void, Never>?
@@ -175,26 +176,7 @@ struct FocusRealityView: View {
                 dragOrigins[id] = origin
 
                 if var session = depthDragSession, session.rootID == id {
-                    let rawAttention = DepthManipulation.attention(
-                        origin: session.originAttentions[id] ?? node.attention,
-                        verticalTranslation: value.translation.height,
-                        viewportHeight: canvasSize.height,
-                        cameraDistance: store.cameraIntent.pose.distance
-                    )
-                    let landing = DepthManipulation.landing(for: rawAttention)
-                    session.landing = landing
-                    depthDragSession = session
-                    let delta = landing.attention - (session.originAttentions[id] ?? node.attention)
-                    let previewItems = session.snapshot.items.compactMap { item -> FocusSceneSnapshot.Item? in
-                        guard session.nodeIDs.contains(item.id),
-                              let original = session.originAttentions[item.id] else { return nil }
-                        return previewItem(
-                            item,
-                            position: item.position,
-                            attention: original + delta
-                        )
-                    }
-                    renderer.previewDepthDrag(items: previewItems, snapshot: session.snapshot)
+                    previewDepth(session: &session, verticalTranslation: value.translation.height)
                     return
                 }
 
@@ -308,12 +290,28 @@ struct FocusRealityView: View {
 
     private func beginTrackpadPan() {
         trackpadPanOrigin = store.cameraIntent.pose
+        trackpadPanMode = .pending(store.hoveredNodeID)
         noteNavigationActivity(scheduleIdleReturn: false)
     }
 
     private func updateTrackpadPan(translation: CGSize) {
+        guard var mode = trackpadPanMode else {
+            beginTrackpadPan()
+            return updateTrackpadPan(translation: translation)
+        }
+        mode = mode.resolved(for: translation)
+        trackpadPanMode = mode
+
+        if case let .branchDepth(id) = mode {
+            if depthDragSession == nil { beginTrackpadDepth(for: id) }
+            if var session = depthDragSession {
+                previewDepth(session: &session, verticalTranslation: -translation.height)
+            }
+            return
+        }
+        guard mode == .camera else { return }
+
         let origin = trackpadPanOrigin ?? store.cameraIntent.pose
-        if trackpadPanOrigin == nil { beginTrackpadPan() }
         renderer.previewCamera(
             pose: store.panCameraPose(
                 horizontal: translation.width,
@@ -325,23 +323,82 @@ struct FocusRealityView: View {
     }
 
     private func endTrackpadPan(translation: CGSize) {
-        if let origin = trackpadPanOrigin {
+        if case .camera = trackpadPanMode,
+           let origin = trackpadPanOrigin {
             store.panCamera(
                 horizontal: translation.width,
                 vertical: translation.height,
                 from: origin
             )
+        } else if case .branchDepth = trackpadPanMode,
+                  let session = depthDragSession {
+            store.setBranchAttention(
+                rootID: session.rootID,
+                nodeIDs: session.nodeIDs,
+                originAttentions: session.originAttentions,
+                rootAttention: session.landing.attention
+            )
+            store.endInteraction()
         }
         trackpadPanOrigin = nil
+        trackpadPanMode = nil
+        depthDragSession = nil
         noteNavigationActivity()
     }
 
     private func cancelTrackpadPan() {
-        if let origin = trackpadPanOrigin {
+        if case .camera = trackpadPanMode,
+           let origin = trackpadPanOrigin {
             renderer.previewCamera(pose: origin, reduceMotion: reduceMotion)
+        } else if case .branchDepth = trackpadPanMode,
+                  let session = depthDragSession {
+            let originalItems = session.snapshot.items.filter { session.nodeIDs.contains($0.id) }
+            renderer.previewDepthDrag(items: originalItems, snapshot: session.snapshot)
+            store.endInteraction()
         }
         trackpadPanOrigin = nil
+        trackpadPanMode = nil
+        depthDragSession = nil
         noteNavigationActivity()
+    }
+
+    private func beginTrackpadDepth(for id: UUID) {
+        guard let node = store.map.node(id: id) else { return }
+        let nodeIDs = store.map.descendants(of: id).union([id])
+        let origins = Dictionary(uniqueKeysWithValues: store.map.nodes.compactMap { candidate in
+            nodeIDs.contains(candidate.id) ? (candidate.id, candidate.attention) : nil
+        })
+        store.beginInteraction()
+        depthDragSession = DepthDragSession(
+            rootID: id,
+            nodeIDs: nodeIDs,
+            originAttentions: origins,
+            snapshot: store.sceneSnapshot,
+            landing: DepthManipulation.landing(for: node.attention)
+        )
+    }
+
+    private func previewDepth(session: inout DepthDragSession, verticalTranslation: Double) {
+        let originalAttention = session.originAttentions[session.rootID] ?? session.landing.attention
+        let rawAttention = DepthManipulation.attention(
+            origin: originalAttention,
+            verticalTranslation: verticalTranslation,
+            viewportHeight: canvasSize.height,
+            cameraDistance: store.cameraIntent.pose.distance
+        )
+        session.landing = DepthManipulation.landing(for: rawAttention)
+        depthDragSession = session
+        let delta = session.landing.attention - originalAttention
+        let previewItems = session.snapshot.items.compactMap { item -> FocusSceneSnapshot.Item? in
+            guard session.nodeIDs.contains(item.id),
+                  let original = session.originAttentions[item.id] else { return nil }
+            return previewItem(
+                item,
+                position: item.position,
+                attention: original + delta
+            )
+        }
+        renderer.previewDepthDrag(items: previewItems, snapshot: session.snapshot)
     }
 
     private var rotationGesture: some Gesture {
@@ -388,7 +445,7 @@ struct FocusRealityView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 6)
-                .help("Drag to orbit; use two fingers on the trackpad to pan")
+                .help("Drag to orbit; two-finger drag to pan, or move vertically over a thought to shift its branch in depth")
             Divider().frame(height: 22)
             Button("Zoom out", systemImage: "minus.magnifyingglass") {
                 store.zoomCamera(by: 0.84, animated: true)
@@ -566,6 +623,21 @@ private struct DepthDragSession {
     var landing: DepthManipulation.Landing
 }
 
+enum TrackpadPanMode: Equatable {
+    case pending(UUID?)
+    case camera
+    case branchDepth(UUID)
+
+    func resolved(for translation: CGSize) -> Self {
+        guard case let .pending(candidateID) = self else { return self }
+        let horizontal = abs(translation.width)
+        let vertical = abs(translation.height)
+        guard max(horizontal, vertical) >= 3 else { return self }
+        guard let candidateID, vertical > horizontal * 1.15 else { return .camera }
+        return .branchDepth(candidateID)
+    }
+}
+
 private struct DepthGuideView: View {
     let landing: DepthManipulation.Landing
     let movesBranch: Bool
@@ -604,7 +676,7 @@ private struct DepthGuideView: View {
             Text(landing.band?.displayName ?? landing.attention.formatted(.percent.precision(.fractionLength(0))))
                 .font(.caption.weight(.medium))
                 .foregroundStyle(landing.band == nil ? .secondary : .primary)
-            Text("⌥ drag · ⌘⌥ isolates one item")
+            Text("Two-finger vertical drag · ⌥ drag also works")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }

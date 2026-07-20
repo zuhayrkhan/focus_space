@@ -5,10 +5,13 @@ Completed on 20 July 2026.
 ## Interaction contract
 
 - Dragging a node continues to arrange it on the hierarchy plane.
+- A vertical two-finger drag begun over a node changes attention and carries its
+  descendants while preserving their relative attention offsets. The gesture
+  locks to depth movement until the fingers lift.
+- Horizontal two-finger movement over a node, and two-finger movement over empty
+  space, continues to pan the camera.
 - Option-dragging changes attention on a camera-facing interaction plane, so the
-  gesture remains spatially consistent as the camera distance changes.
-- Option-dragging a parent carries its descendants while preserving their
-  relative attention offsets.
+  pointer alternative remains spatially consistent as camera distance changes.
 - Command-Option-dragging explicitly isolates the grabbed node from its branch.
 - A temporary guide previews the landing point and identifies whether one item
   or a branch is moving. It disappears when the manipulation ends.
@@ -42,6 +45,7 @@ implementation detail.
   persistent inspector's semantic-stop menu. Selecting **This week** moved the
   selected node to 74% attention and enabled one Undo command.
 
-The automated macOS driver cannot synthesize a modifier-held physical drag, so
-Option-drag and Command-Option-drag remain a short manual feel check in addition
-to their deterministic application-logic coverage.
+The automated macOS driver cannot fully reproduce physical trackpad or
+modifier-held drags, so two-finger, Option-drag, and Command-Option-drag remain
+short manual feel checks in addition to their deterministic application-logic
+coverage.

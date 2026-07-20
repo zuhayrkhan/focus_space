@@ -9,7 +9,8 @@ grammar:
 
 1. near and bright means attention now; far and quiet means deliberately parked;
 2. X/Y hierarchy places broader parents above their detail;
-3. Option-drag carries a branch in depth, while Command-Option isolates one item;
+3. a vertical two-finger drag carries a branch in depth, with Option-drag and
+   Command-Option available as pointer alternatives;
 4. time signals may suggest a pull, but a manual move wins for seven days.
 
 The guide uses quiet animated spatial illustrations, respects Reduce Motion, and
