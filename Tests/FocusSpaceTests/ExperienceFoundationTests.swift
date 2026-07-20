@@ -642,7 +642,7 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertEqual(pose.targetAttention, 1)
         XCTAssertEqual(pose.yaw, 55)
         XCTAssertEqual(pose.pitch, -34)
-        XCTAssertEqual(pose.distance, 18)
+        XCTAssertEqual(pose.distance, 32)
     }
 
     func testDepthManipulationUsesCameraAwarePlaneAndMagneticStops() {
