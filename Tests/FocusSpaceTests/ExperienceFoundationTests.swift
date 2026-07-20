@@ -445,6 +445,37 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertLessThan(crossLink.dashedSegments.count, crossLink.solidSegments.count)
         XCTAssertNotEqual(hierarchy.points[hierarchy.points.count / 2], crossLink.points[crossLink.points.count / 2])
         XCTAssertGreaterThan(hierarchy.points[hierarchy.points.count / 2].z, min(source.z, target.z))
+        XCTAssertEqual(hierarchy.pointRuns(for: .hierarchy), [hierarchy.points])
+        XCTAssertGreaterThan(crossLink.pointRuns(for: .crossLink).count, 2)
+
+        let sourceOffset = hierarchy.points[0] - source
+        let sourceBoundary = max(
+            abs(sourceOffset.x) / (1.6 * 0.5),
+            abs(sourceOffset.y) / (0.7 * 0.5)
+        )
+        XCTAssertEqual(sourceBoundary, 0.96, accuracy: 0.001)
+
+        let ellipse = RelationshipCurveGeometry.make(
+            from: source,
+            sourceSize: SIMD2<Float>(1.6, 0.7),
+            to: target,
+            targetSize: SIMD2<Float>(1.3, 0.5),
+            kind: .hierarchy,
+            sourceShape: .ellipse,
+            targetShape: .diamond,
+            sampleCount: 36
+        )
+        let ellipseOffset = ellipse.points[0] - source
+        let normalizedEllipseRadius = sqrt(
+            pow(ellipseOffset.x / (1.6 * 0.5), 2)
+                + pow(ellipseOffset.y / (0.7 * 0.5), 2)
+        )
+        XCTAssertEqual(normalizedEllipseRadius, 0.96, accuracy: 0.001)
+        for index in 1..<(ellipse.points.count - 2) {
+            let first = simd_normalize(ellipse.points[index] - ellipse.points[index - 1])
+            let second = simd_normalize(ellipse.points[index + 1] - ellipse.points[index])
+            XCTAssertGreaterThan(simd_dot(first, second), 0.99)
+        }
     }
 
     @MainActor
@@ -497,7 +528,14 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertEqual(links.count, store.sceneSnapshot.relationships.count)
         XCTAssertTrue(links.contains { $0.findEntity(named: "hierarchy-core") != nil })
         XCTAssertTrue(links.contains { $0.findEntity(named: "cross-link-core") != nil })
-        XCTAssertTrue(links.allSatisfy { $0.findEntity(named: "link-glow") != nil })
+        XCTAssertTrue(links.allSatisfy { $0.findEntity(named: "link-glow") == nil })
+
+        let selectedID = try XCTUnwrap(store.map.nodes.first { $0.title == "Critical Now" }?.id)
+        store.select(selectedID)
+        renderer.reconcile(root: root, snapshot: store.sceneSnapshot)
+        let selectedLinks = root.children.filter { $0.name.hasPrefix("link-") }
+        XCTAssertTrue(selectedLinks.contains { $0.findEntity(named: "link-glow") != nil })
+        XCTAssertTrue(selectedLinks.contains { $0.findEntity(named: "link-glow") == nil })
     }
 
     @MainActor

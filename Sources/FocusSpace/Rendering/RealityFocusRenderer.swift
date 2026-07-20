@@ -667,13 +667,17 @@ final class RealityFocusRenderer {
             guard let source = byID[relationship.sourceID], let target = byID[relationship.targetID] else { continue }
             let sourceStyle = visualStyle(for: source)
             let targetStyle = visualStyle(for: target)
+            let sourceScale = Float(0.78 + source.attention * 0.24)
+            let targetScale = Float(0.78 + target.attention * 0.24)
             let name = relationshipName(relationship)
             let key = RelationshipRenderKey(
                 relationship: relationship,
                 sourcePosition: position(for: source),
-                sourceSize: SIMD2<Float>(sourceStyle.width, sourceStyle.height),
+                sourceSize: SIMD2<Float>(sourceStyle.width, sourceStyle.height) * sourceScale,
+                sourceShape: sourceStyle.silhouette,
                 targetPosition: position(for: target),
-                targetSize: SIMD2<Float>(targetStyle.width, targetStyle.height)
+                targetSize: SIMD2<Float>(targetStyle.width, targetStyle.height) * targetScale,
+                targetShape: targetStyle.silhouette
             )
             if relationshipKeys[name] == key, root.findEntity(named: name) != nil { continue }
             root.findEntity(named: name)?.removeFromParent()
@@ -683,26 +687,32 @@ final class RealityFocusRenderer {
                 to: key.targetPosition,
                 targetSize: key.targetSize,
                 kind: relationship.kind,
-                sampleCount: quality == .efficient ? 14 : 24
+                sourceShape: key.sourceShape,
+                targetShape: key.targetShape,
+                sampleCount: quality == .efficient ? 28 : 42
             )
-            let segments = relationship.kind == .crossLink ? curve.dashedSegments : curve.solidSegments
+            let pointRuns = curve.pointRuns(for: relationship.kind)
             let link = Entity()
             link.name = name
             let opacity = relationshipOpacity(relationship)
-            if let glow = try? makeRelationshipMesh(segments: segments, thickness: relationshipThickness(relationship) * 2.7) {
+            let showsGlow = relationship.emphasis == .branch || relationship.emphasis == .direct
+            if showsGlow,
+               let glow = try? makeRelationshipMesh(pointRuns: pointRuns, thickness: relationshipThickness(relationship) * 1.8) {
                 var material = UnlitMaterial(color: relationshipColor(relationship))
                 material.faceCulling = .none
-                material.blending = .transparent(opacity: .init(scale: opacity * 0.20))
+                material.blending = .transparent(opacity: .init(scale: opacity * 0.16))
                 let entity = ModelEntity(mesh: glow, materials: [material])
                 entity.name = "link-glow"
+                entity.position.z = -0.006
                 link.addChild(entity)
             }
-            if let core = try? makeRelationshipMesh(segments: segments, thickness: relationshipThickness(relationship)) {
+            if let core = try? makeRelationshipMesh(pointRuns: pointRuns, thickness: relationshipThickness(relationship)) {
                 var material = UnlitMaterial(color: relationshipColor(relationship))
                 material.faceCulling = .none
                 material.blending = .transparent(opacity: .init(scale: opacity))
                 let entity = ModelEntity(mesh: core, materials: [material])
                 entity.name = relationship.kind == .crossLink ? "cross-link-core" : "hierarchy-core"
+                entity.position.z = 0.004
                 link.addChild(entity)
             }
             root.addChild(link)
@@ -762,19 +772,26 @@ final class RealityFocusRenderer {
     }
 
     private func makeRelationshipMesh(
-        segments: [RelationshipCurveGeometry.Segment],
+        pointRuns: [[SIMD3<Float>]],
         thickness: Float
     ) throws -> MeshResource {
         var positions: [SIMD3<Float>] = []
         var indices: [UInt32] = []
-        for segment in segments {
-            appendLineQuad(
-                from: segment.start,
-                to: segment.end,
-                thickness: thickness,
-                positions: &positions,
-                indices: &indices
-            )
+        for points in pointRuns where points.count > 1 {
+            let base = UInt32(positions.count)
+            for index in points.indices {
+                let previous = points[index == points.startIndex ? index : points.index(before: index)]
+                let next = points[index == points.index(before: points.endIndex) ? index : points.index(after: index)]
+                let tangent = next - previous
+                let planarLength = max(simd_length(SIMD2<Float>(tangent.x, tangent.y)), 0.0001)
+                let normal = SIMD3<Float>(-tangent.y / planarLength, tangent.x / planarLength, 0) * thickness
+                positions.append(points[index] - normal)
+                positions.append(points[index] + normal)
+            }
+            for index in 0..<(points.count - 1) {
+                let start = base + UInt32(index * 2)
+                indices.append(contentsOf: [start, start + 1, start + 2, start + 2, start + 1, start + 3])
+            }
         }
         var descriptor = MeshDescriptor(name: "relationship-curve")
         descriptor.positions = MeshBuffers.Positions(positions)
@@ -907,8 +924,10 @@ private struct RelationshipRenderKey: Equatable {
     let relationship: FocusSceneSnapshot.Relationship
     let sourcePosition: SIMD3<Float>
     let sourceSize: SIMD2<Float>
+    let sourceShape: NodeSilhouette
     let targetPosition: SIMD3<Float>
     let targetSize: SIMD2<Float>
+    let targetShape: NodeSilhouette
 }
 
 private struct SeededRandom {
