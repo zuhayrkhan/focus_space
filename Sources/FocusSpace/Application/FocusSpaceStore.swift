@@ -342,6 +342,21 @@ final class FocusSpaceStore: ObservableObject {
         mutate(recordingUndo: !isInteracting) { $0.updateNode(id: id) { $0.move(to: point) } }
     }
 
+    func translate(
+        _ nodeIDs: Set<UUID>,
+        from originPositions: [UUID: SpatialPoint],
+        by delta: SpatialPoint
+    ) {
+        mutate(recordingUndo: !isInteracting) { map in
+            for id in nodeIDs {
+                guard let origin = originPositions[id] else { continue }
+                map.updateNode(id: id) {
+                    $0.move(to: SpatialPoint(x: origin.x + delta.x, y: origin.y + delta.y))
+                }
+            }
+        }
+    }
+
     func setAttention(_ id: UUID, to attention: Double) {
         let now = nowProvider()
         mutate(recordingUndo: !isInteracting) {

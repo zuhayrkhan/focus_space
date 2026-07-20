@@ -8,6 +8,7 @@ This changes only X/Y arrangement. Attention remains Z, and the existing semanti
 
 - **Arrange Mind Map** (`Command-Shift-L`) converts the current map to the bilateral layout and frames the result.
 - Existing authored positions remain untouched until Arrange is invoked.
+- Option-dragging any thought translates its complete connected island, including hierarchy and cross-link connections, while preserving relative layout and attention.
 - A new child continues outward on its parent's side of the map. Children created from the central root alternate toward the less populated side.
 - Separate rooted trees remain separate mind-map islands. They are packed in centred rows of no more than two islands so their branches remain readable.
 - Large collections of unrelated thoughts retain the compact fallback grid.

@@ -12,8 +12,7 @@ struct FocusRealityView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage("nodeLegendCorner") private var legendCornerRaw = LegendCorner.topTrailing.rawValue
     @State private var renderer = RealityFocusRenderer()
-    @State private var dragOrigins: [UUID: SpatialPoint] = [:]
-    @State private var dragSnapshots: [UUID: FocusSceneSnapshot] = [:]
+    @State private var spatialDragSession: SpatialDragSession?
     @State private var depthDragSession: DepthDragSession?
     @State private var cameraDragOrigin: FocusCameraIntent.Pose?
     @State private var magnifyOrigin: FocusCameraIntent.Pose?
@@ -151,69 +150,49 @@ struct FocusRealityView: View {
             .targetedToAnyEntity()
             .onChanged { value in
                 canvasFocused = true
-                guard let id = nodeID(from: value.entity), let node = store.map.node(id: id) else { return }
-                let origin = dragOrigins[id] ?? node.position
-                if dragOrigins[id] == nil {
+                guard let id = nodeID(from: value.entity), store.map.node(id: id) != nil else { return }
+                if spatialDragSession == nil {
                     store.beginInteraction()
-                    dragSnapshots[id] = store.sceneSnapshot
-                    if NSApp.currentEvent?.modifierFlags.contains(.option) == true {
-                        let isolatesNode = NSApp.currentEvent?.modifierFlags.contains(.command) == true
-                        let nodeIDs = isolatesNode
-                            ? Set([id])
-                            : store.map.descendants(of: id).union([id])
-                        let origins = Dictionary(uniqueKeysWithValues: store.map.nodes.compactMap { candidate in
-                            nodeIDs.contains(candidate.id) ? (candidate.id, candidate.attention) : nil
-                        })
-                        depthDragSession = DepthDragSession(
-                            rootID: id,
-                            nodeIDs: nodeIDs,
-                            originAttentions: origins,
-                            snapshot: store.sceneSnapshot,
-                            landing: DepthManipulation.landing(for: node.attention)
-                        )
-                    }
-                }
-                dragOrigins[id] = origin
-
-                if var session = depthDragSession, session.rootID == id {
-                    previewDepth(session: &session, verticalTranslation: value.translation.height)
-                    return
-                }
-
-                let dx = Double(value.translation.width / 115)
-                let dy = Double(-value.translation.height / 115)
-                if let entity = nodeEntity(from: value.entity),
-                   let snapshot = dragSnapshots[id],
-                   let base = snapshot.items.first(where: { $0.id == id }) {
-                    renderer.previewNodeDrag(
-                        entity: entity,
-                        item: previewItem(
-                            base,
-                            position: SpatialPoint(x: origin.x + dx, y: origin.y + dy),
-                            attention: node.attention
-                        ),
-                        snapshot: snapshot
+                    let movesConnectedComponent = NSApp.currentEvent?.modifierFlags.contains(.option) == true
+                    let nodeIDs = movesConnectedComponent
+                        ? store.map.connectedComponent(containing: id)
+                        : Set([id])
+                    spatialDragSession = SpatialDragSession(
+                        rootID: id,
+                        nodeIDs: nodeIDs,
+                        originPositions: Dictionary(uniqueKeysWithValues: store.map.nodes.compactMap { candidate in
+                            nodeIDs.contains(candidate.id) ? (candidate.id, candidate.position) : nil
+                        }),
+                        snapshot: store.sceneSnapshot
                     )
                 }
+                guard let session = spatialDragSession, session.rootID == id else { return }
+                let dx = Double(value.translation.width / 115)
+                let dy = Double(-value.translation.height / 115)
+                let previewItems = session.snapshot.items.compactMap { item -> FocusSceneSnapshot.Item? in
+                    guard session.nodeIDs.contains(item.id),
+                          let origin = session.originPositions[item.id] else { return nil }
+                    return previewItem(
+                        item,
+                        position: SpatialPoint(x: origin.x + dx, y: origin.y + dy),
+                        attention: item.attention
+                    )
+                }
+                renderer.previewNodeDrag(items: previewItems, snapshot: session.snapshot)
             }
             .onEnded { value in
-                if let id = nodeID(from: value.entity), let origin = dragOrigins[id] {
+                if let id = nodeID(from: value.entity),
+                   let session = spatialDragSession,
+                   session.rootID == id {
                     let dx = Double(value.translation.width / 115)
                     let dy = Double(-value.translation.height / 115)
-                    if let session = depthDragSession, session.rootID == id {
-                        store.setBranchAttention(
-                            rootID: id,
-                            nodeIDs: session.nodeIDs,
-                            originAttentions: session.originAttentions,
-                            rootAttention: session.landing.attention
-                        )
-                    } else {
-                        store.move(id, to: SpatialPoint(x: origin.x + dx, y: origin.y + dy))
-                    }
-                    dragOrigins[id] = nil
-                    dragSnapshots[id] = nil
-                    depthDragSession = nil
+                    store.translate(
+                        session.nodeIDs,
+                        from: session.originPositions,
+                        by: SpatialPoint(x: dx, y: dy)
+                    )
                 }
+                spatialDragSession = nil
                 store.endInteraction()
             }
     }
@@ -623,6 +602,13 @@ private struct DepthDragSession {
     var landing: DepthManipulation.Landing
 }
 
+private struct SpatialDragSession {
+    let rootID: UUID
+    let nodeIDs: Set<UUID>
+    let originPositions: [UUID: SpatialPoint]
+    let snapshot: FocusSceneSnapshot
+}
+
 enum TrackpadPanMode: Equatable {
     case pending(UUID?)
     case camera
@@ -676,7 +662,7 @@ private struct DepthGuideView: View {
             Text(landing.band?.displayName ?? landing.attention.formatted(.percent.precision(.fractionLength(0))))
                 .font(.caption.weight(.medium))
                 .foregroundStyle(landing.band == nil ? .secondary : .primary)
-            Text("Two-finger vertical drag · ⌥ drag also works")
+            Text("Two-finger vertical drag")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }

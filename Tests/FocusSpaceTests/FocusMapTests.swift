@@ -22,6 +22,22 @@ final class FocusMapTests: XCTestCase {
         XCTAssertTrue(map.nodes[0].relatedNodeIDs.isEmpty)
     }
 
+    func testConnectedComponentTraversesHierarchyAndCrossLinksInBothDirections() {
+        let root = FocusNode(title: "Root")
+        let child = FocusNode(title: "Child", parentID: root.id)
+        let related = FocusNode(title: "Related", relatedNodeIDs: [child.id])
+        let relatedChild = FocusNode(title: "Related child", parentID: related.id)
+        let isolated = FocusNode(title: "Isolated")
+        let map = FocusMap(nodes: [root, child, related, relatedChild, isolated])
+
+        XCTAssertEqual(
+            map.connectedComponent(containing: root.id),
+            Set([root.id, child.id, related.id, relatedChild.id])
+        )
+        XCTAssertEqual(map.connectedComponent(containing: isolated.id), Set([isolated.id]))
+        XCTAssertTrue(map.connectedComponent(containing: UUID()).isEmpty)
+    }
+
     func testJSONRepositoryRoundTripsHumanReadableMap() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         let repository = JSONFocusMapRepository(fileURL: folder.appending(path: "map.json"))

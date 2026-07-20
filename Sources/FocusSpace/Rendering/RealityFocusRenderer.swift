@@ -151,19 +151,25 @@ final class RealityFocusRenderer {
         item: FocusSceneSnapshot.Item,
         snapshot: FocusSceneSnapshot
     ) {
-        entity.position = position(for: item)
-        let depthScale = Float(0.78 + item.attention * 0.24)
-        entity.scale = SIMD3<Float>(repeating: depthScale)
-        guard let sceneRoot else { return }
-        let preview = FocusSceneSnapshot(
-            items: snapshot.items.map { $0.id == item.id ? item : $0 },
-            relationships: snapshot.relationships
-        )
-        reconcileRelationships(root: sceneRoot, snapshot: preview)
+        previewNodeDrag(items: [item], snapshot: snapshot)
+    }
+
+    func previewNodeDrag(
+        items: [FocusSceneSnapshot.Item],
+        snapshot: FocusSceneSnapshot
+    ) {
+        previewItems(items, snapshot: snapshot)
     }
 
     func previewDepthDrag(
         items: [FocusSceneSnapshot.Item],
+        snapshot: FocusSceneSnapshot
+    ) {
+        previewItems(items, snapshot: snapshot)
+    }
+
+    private func previewItems(
+        _ items: [FocusSceneSnapshot.Item],
         snapshot: FocusSceneSnapshot
     ) {
         guard let sceneRoot else { return }

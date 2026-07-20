@@ -10,9 +10,10 @@ Completed on 20 July 2026.
   locks to depth movement until the fingers lift.
 - Horizontal two-finger movement over a node, and two-finger movement over empty
   space, continues to pan the camera.
-- Option-dragging changes attention on a camera-facing interaction plane, so the
-  pointer alternative remains spatially consistent as camera distance changes.
-- Command-Option-dragging explicitly isolates the grabbed node from its branch.
+- A vertical two-finger drag changes attention on a camera-facing interaction
+  plane, so it remains spatially consistent as camera distance changes.
+- Option-dragging translates the grabbed node's complete connected island in
+  X/Y while preserving relative layout and attention.
 - A temporary guide previews the landing point and identifies whether one item
   or a branch is moving. It disappears when the manipulation ends.
 - Now, This week, This sprint, This quarter, and Someday act as magnetic depth
@@ -46,6 +47,6 @@ implementation detail.
   selected node to 74% attention and enabled one Undo command.
 
 The automated macOS driver cannot fully reproduce physical trackpad or
-modifier-held drags, so two-finger, Option-drag, and Command-Option-drag remain
-short manual feel checks in addition to their deterministic application-logic
-coverage.
+modifier-held drags, so two-finger branch depth and Option-drag island movement
+remain short manual feel checks in addition to their deterministic
+application-logic coverage.

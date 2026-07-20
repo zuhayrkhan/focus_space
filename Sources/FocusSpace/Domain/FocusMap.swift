@@ -75,4 +75,30 @@ struct FocusMap: Codable, Equatable, Sendable {
         }
         return result
     }
+
+    func connectedComponent(containing id: UUID) -> Set<UUID> {
+        guard node(id: id) != nil else { return [] }
+        var adjacency: [UUID: Set<UUID>] = [:]
+        let validIDs = Set(nodes.map(\.id))
+
+        for node in nodes {
+            if let parentID = node.parentID, validIDs.contains(parentID) {
+                adjacency[node.id, default: []].insert(parentID)
+                adjacency[parentID, default: []].insert(node.id)
+            }
+            for relatedID in node.relatedNodeIDs where validIDs.contains(relatedID) {
+                adjacency[node.id, default: []].insert(relatedID)
+                adjacency[relatedID, default: []].insert(node.id)
+            }
+        }
+
+        var result: Set<UUID> = [id]
+        var frontier = [id]
+        while let current = frontier.popLast() {
+            for neighbour in adjacency[current, default: []] where result.insert(neighbour).inserted {
+                frontier.append(neighbour)
+            }
+        }
+        return result
+    }
 }

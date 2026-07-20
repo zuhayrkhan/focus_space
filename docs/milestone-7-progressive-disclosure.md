@@ -8,10 +8,10 @@ A four-step guided scene opens on first run and teaches the complete spatial
 grammar:
 
 1. near and bright means attention now; far and quiet means deliberately parked;
-2. X/Y hierarchy places broader parents above their detail;
-3. a vertical two-finger drag carries a branch in depth, with Option-drag and
-   Command-Option available as pointer alternatives;
-4. time signals may suggest a pull, but a manual move wins for seven days.
+2. X/Y relationships grow outward from the central thought;
+3. a vertical two-finger drag carries a branch in depth;
+4. Option-drag translates a complete connected mind-map island in X/Y;
+5. time signals may suggest a pull, but a manual move wins for seven days.
 
 The guide uses quiet animated spatial illustrations, respects Reduce Motion, and
 never changes the user's map. It records completion in app preferences and can

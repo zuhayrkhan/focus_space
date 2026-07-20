@@ -662,6 +662,44 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertGreaterThan(abs(childPosition.x), abs(map.node(id: branch.id)!.position.x))
     }
 
+    @MainActor
+    func testConnectedMapTranslationPreservesRelativeLayoutAndAttentionAsOneUndoStep() throws {
+        let timestamp = Date(timeIntervalSince1970: 1_800_000_000)
+        let root = FocusNode(
+            title: "Root", position: SpatialPoint(x: 1, y: 2), attention: 0.7,
+            createdAt: timestamp, updatedAt: timestamp
+        )
+        let child = FocusNode(
+            title: "Child", position: SpatialPoint(x: 3, y: -1), attention: 0.3,
+            parentID: root.id, createdAt: timestamp, updatedAt: timestamp
+        )
+        let isolated = FocusNode(
+            title: "Isolated", position: SpatialPoint(x: -4, y: 5), attention: 0.9,
+            createdAt: timestamp, updatedAt: timestamp
+        )
+        let original = FocusMap(nodes: [root, child, isolated])
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let repository = JSONFocusMapRepository(fileURL: folder.appending(path: "map.json"))
+        try repository.save(original)
+        let store = FocusSpaceStore(repository: repository)
+        let component = store.map.connectedComponent(containing: child.id)
+        let origins = Dictionary(uniqueKeysWithValues: store.map.nodes.map { ($0.id, $0.position) })
+
+        store.beginInteraction()
+        store.translate(component, from: origins, by: SpatialPoint(x: 2.5, y: -1.25))
+        store.endInteraction()
+
+        XCTAssertEqual(store.map.node(id: root.id)?.position, SpatialPoint(x: 3.5, y: 0.75))
+        XCTAssertEqual(store.map.node(id: child.id)?.position, SpatialPoint(x: 5.5, y: -2.25))
+        XCTAssertEqual(store.map.node(id: isolated.id)?.position, isolated.position)
+        XCTAssertEqual(store.map.node(id: root.id)?.attention, root.attention)
+        XCTAssertEqual(store.map.node(id: child.id)?.attention, child.attention)
+        XCTAssertTrue(store.canUndo)
+
+        store.undo()
+        XCTAssertEqual(store.map, original)
+    }
+
     func testCameraPoseAppliesSoftWorkspaceBounds() {
         let pose = FocusCameraIntent.Pose(
             target: SpatialPoint(x: 99, y: -99),
