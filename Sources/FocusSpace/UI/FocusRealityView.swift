@@ -7,6 +7,9 @@ struct FocusRealityView: View {
     @Binding var colourKeyVisible: Bool
     let nodeShapePreference: NodeShapePreference
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage("nodeLegendCorner") private var legendCornerRaw = LegendCorner.topTrailing.rawValue
     @State private var renderer = RealityFocusRenderer()
     @State private var dragOrigins: [UUID: SpatialPoint] = [:]
@@ -32,7 +35,9 @@ struct FocusRealityView: View {
             renderer.reconcile(
                 root: root,
                 snapshot: store.sceneSnapshot,
-                shapePreference: nodeShapePreference
+                shapePreference: differentiateWithoutColor ? .semantic : nodeShapePreference,
+                highContrast: colorSchemeContrast == .increased,
+                textScale: rendererTextScale
             )
             renderer.updateAmbient(root: root, reduceMotion: reduceMotion)
             renderer.updateCamera(root: root, intent: store.cameraIntent, reduceMotion: reduceMotion)
@@ -89,6 +94,9 @@ struct FocusRealityView: View {
         .onDisappear {
             controlsTask?.cancel()
             idleReturnTask?.cancel()
+        }
+        .accessibilityRepresentation {
+            AccessibilitySpaceRepresentation(store: store)
         }
     }
 
@@ -414,6 +422,16 @@ struct FocusRealityView: View {
 
     private var legendCorner: LegendCorner {
         LegendCorner(rawValue: legendCornerRaw) ?? .topTrailing
+    }
+
+    private var rendererTextScale: Float {
+        switch dynamicTypeSize {
+        case .xSmall, .small, .medium, .large: 1
+        case .xLarge: 1.06
+        case .xxLarge: 1.10
+        case .xxxLarge: 1.14
+        default: 1.22
+        }
     }
 
     private func noteNavigationActivity(scheduleIdleReturn: Bool = true) {

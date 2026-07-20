@@ -67,6 +67,42 @@ struct FocusSpaceApp: App {
                 Button("Reset View") { store.resetCamera() }
                     .keyboardShortcut("0", modifiers: .command)
             }
+            CommandMenu("Navigate") {
+                Button("Previous Thought", action: store.selectPreviousThought)
+                    .keyboardShortcut(.upArrow, modifiers: .control)
+                Button("Next Thought", action: store.selectNextThought)
+                    .keyboardShortcut(.downArrow, modifiers: .control)
+                Button("Parent Thought", action: store.selectParentThought)
+                    .keyboardShortcut(.leftArrow, modifiers: .control)
+                    .disabled(store.selection == nil)
+                Button("First Child Thought", action: store.selectFirstChildThought)
+                    .keyboardShortcut(.rightArrow, modifiers: .control)
+                    .disabled(store.selection == nil)
+                Divider()
+                Button("Move Thought Left") { store.moveSelection(horizontal: -0.25, vertical: 0) }
+                    .keyboardShortcut(.leftArrow, modifiers: [.control, .command])
+                    .disabled(store.selection == nil)
+                Button("Move Thought Right") { store.moveSelection(horizontal: 0.25, vertical: 0) }
+                    .keyboardShortcut(.rightArrow, modifiers: [.control, .command])
+                    .disabled(store.selection == nil)
+                Button("Move Thought Up") { store.moveSelection(horizontal: 0, vertical: 0.25) }
+                    .keyboardShortcut(.upArrow, modifiers: [.control, .command])
+                    .disabled(store.selection == nil)
+                Button("Move Thought Down") { store.moveSelection(horizontal: 0, vertical: -0.25) }
+                    .keyboardShortcut(.downArrow, modifiers: [.control, .command])
+                    .disabled(store.selection == nil)
+                Divider()
+                Button("Pull Thought Forward") {
+                    if let id = store.selection { store.shiftAttention(id, by: 0.08) }
+                }
+                .keyboardShortcut(.upArrow, modifiers: [.option, .command])
+                .disabled(store.selection == nil)
+                Button("Push Thought Back") {
+                    if let id = store.selection { store.shiftAttention(id, by: -0.08) }
+                }
+                .keyboardShortcut(.downArrow, modifiers: [.option, .command])
+                .disabled(store.selection == nil)
+            }
         }
     }
 }

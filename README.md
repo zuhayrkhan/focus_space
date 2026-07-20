@@ -52,6 +52,7 @@ RealityKit types do not cross into the domain or application layers.
 - [Milestone 5 depth manipulation](docs/milestone-5-depth-manipulation.md)
 - [Milestone 6 gravity and time](docs/milestone-6-gravity-and-time.md)
 - [Milestone 7 progressive disclosure and onboarding](docs/milestone-7-progressive-disclosure.md)
+- [Milestone 8 persistence, accessibility, and resilience](docs/milestone-8-persistence-accessibility-resilience.md)
 - [Interaction refinements from Ibrahim's review](docs/interaction-refinements.md)
 - [Branch focus, shape preferences, and selected notes](docs/branch-focus-shapes-and-notes.md)
 - [Visual north star](docs/reference/focus-space-visual-north-star.png)

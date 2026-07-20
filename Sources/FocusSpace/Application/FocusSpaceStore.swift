@@ -21,12 +21,15 @@ final class FocusSpaceStore: ObservableObject {
     @Published private(set) var cameraIntent: FocusCameraIntent = .canonical
     @Published private(set) var demoScene: DemoScene?
     @Published private(set) var persistenceMessage: String?
+    @Published private(set) var lastSavedAt: Date?
+    @Published private(set) var recoveredFromBackup = false
     @Published private(set) var gravityEvaluationDate: Date
     @Published private(set) var latestInteraction: WorkspaceInteraction?
     @Published private(set) var interactionRevision = 0
 
     private let repository: any FocusMapRepository
     private let nowProvider: () -> Date
+    private let autosaveDelay: Duration
     private var undoMaps: [FocusMap] = []
     private var redoMaps: [FocusMap] = []
     private var isInteracting = false
@@ -35,13 +38,17 @@ final class FocusSpaceStore: ObservableObject {
 
     init(
         repository: any FocusMapRepository = JSONFocusMapRepository(),
-        nowProvider: @escaping () -> Date = Date.init
+        nowProvider: @escaping () -> Date = Date.init,
+        autosaveDelay: Duration = .milliseconds(350)
     ) {
         self.repository = repository
         self.nowProvider = nowProvider
+        self.autosaveDelay = autosaveDelay
         gravityEvaluationDate = nowProvider()
         do {
-            map = try repository.load() ?? Self.sampleMap
+            let outcome = try repository.loadRecovering()
+            map = outcome.map ?? Self.sampleMap
+            recoveredFromBackup = outcome.source == .recovery
         } catch {
             map = Self.sampleMap
             persistenceMessage = "Couldn’t open the saved space: \(error.localizedDescription)"
@@ -57,6 +64,7 @@ final class FocusSpaceStore: ObservableObject {
     var isPreviewingDemo: Bool { demoScene != nil }
     var canFrameSelection: Bool { selection != nil }
     var canArrange: Bool { map.nodes.count > 1 }
+    var storageLocations: FocusMapStorageLocations { repository.storageLocations }
 
     var sceneSnapshot: FocusSceneSnapshot {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -231,6 +239,34 @@ final class FocusSpaceStore: ObservableObject {
             return
         }
         isFocusModeEnabled.toggle()
+    }
+
+    func selectNextThought() {
+        selectRelativeThought(by: 1)
+    }
+
+    func selectPreviousThought() {
+        selectRelativeThought(by: -1)
+    }
+
+    func selectParentThought() {
+        guard let selection,
+              let parentID = map.node(id: selection)?.parentID else { return }
+        select(parentID)
+    }
+
+    func selectFirstChildThought() {
+        guard let selection,
+              let child = map.nodes
+                .filter({ $0.parentID == selection })
+                .sorted(by: spatiallyPrecedes)
+                .first else { return }
+        select(child.id)
+    }
+
+    func moveSelection(horizontal: Double, vertical: Double) {
+        guard let selection, let node = map.node(id: selection) else { return }
+        move(selection, to: SpatialPoint(x: node.position.x + horizontal, y: node.position.y + vertical))
     }
 
     func resetCamera(animated: Bool = true) {
@@ -445,6 +481,48 @@ final class FocusSpaceStore: ObservableObject {
         gravityEvaluationDate = nowProvider()
     }
 
+    func exportMapData() throws -> Data {
+        try FocusMapJSONCodec.encode(map)
+    }
+
+    func importMapData(_ data: Data) throws {
+        let imported = try FocusMapJSONCodec.decode(data)
+        demoScene = nil
+        personalMapBeforeDemo = nil
+        selection = nil
+        hoveredNodeID = nil
+        editingNodeID = nil
+        isFocusModeEnabled = false
+        map = imported
+        undoMaps.removeAll()
+        redoMaps.removeAll()
+        saveImmediately()
+    }
+
+    func saveImmediately() {
+        guard demoScene == nil else { return }
+        saveTask?.cancel()
+        do {
+            try repository.save(map)
+            lastSavedAt = nowProvider()
+            persistenceMessage = nil
+        } catch {
+            persistenceMessage = "Save failed: \(error.localizedDescription)"
+        }
+    }
+
+    func flushAutosave() async {
+        await saveTask?.value
+    }
+
+    func dismissPersistenceMessage() {
+        persistenceMessage = nil
+    }
+
+    func reportPersistenceError(_ message: String) {
+        persistenceMessage = message
+    }
+
     func gravityAssessment(for node: FocusNode) -> GravityAssessment {
         let isEnabled = switch node.gravityPreference {
         case .enabled: true
@@ -561,10 +639,11 @@ final class FocusSpaceStore: ObservableObject {
         let repository = repository
         let map = map
         saveTask = Task {
-            try? await Task.sleep(for: .milliseconds(350))
+            try? await Task.sleep(for: autosaveDelay)
             guard !Task.isCancelled else { return }
             do {
                 try repository.save(map)
+                lastSavedAt = nowProvider()
                 persistenceMessage = nil
             } catch {
                 persistenceMessage = "Autosave paused: \(error.localizedDescription)"
@@ -602,6 +681,24 @@ final class FocusSpaceStore: ObservableObject {
     private func recordInteraction(_ interaction: WorkspaceInteraction) {
         latestInteraction = interaction
         interactionRevision += 1
+    }
+
+    private func selectRelativeThought(by offset: Int) {
+        let ordered = map.nodes.sorted(by: spatiallyPrecedes)
+        guard !ordered.isEmpty else { return }
+        guard let selection,
+              let index = ordered.firstIndex(where: { $0.id == selection }) else {
+            select(offset < 0 ? ordered.last?.id : ordered.first?.id)
+            return
+        }
+        let next = (index + offset + ordered.count) % ordered.count
+        select(ordered[next].id)
+    }
+
+    private func spatiallyPrecedes(_ lhs: FocusNode, _ rhs: FocusNode) -> Bool {
+        if lhs.position.y != rhs.position.y { return lhs.position.y > rhs.position.y }
+        if lhs.position.x != rhs.position.x { return lhs.position.x < rhs.position.x }
+        return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
     }
 
     private func hierarchyDepth(of node: FocusNode) -> Int {

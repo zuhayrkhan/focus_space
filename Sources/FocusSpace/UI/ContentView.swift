@@ -1,27 +1,37 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @ObservedObject var store: FocusSpaceStore
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("universeGuideOpacity") private var universeGuideOpacity = 0.08
     @AppStorage("nodeShapePreference") private var nodeShapePreferenceRaw = NodeShapePreference.semantic.rawValue
     @AppStorage("inspectorVisible") private var inspectorVisible = true
     @AppStorage("colourKeyVisible") private var colourKeyVisible = true
     @AppStorage("hasCompletedSpatialGuide") private var hasCompletedSpatialGuide = false
     @AppStorage("spatialLearningProgress") private var spatialLearningProgressRaw = 0
+    @AppStorage("preferAccessibleList") private var preferAccessibleList = false
     @State private var spatialGuideVisible = false
     @State private var workspaceGuidesVisible = false
+    @State private var importerVisible = false
+    @State private var exporterVisible = false
+    @State private var persistenceDiagnosticsVisible = false
 
     var body: some View {
         NavigationSplitView {
             sidebar
         } detail: {
             HStack(spacing: 0) {
-                FocusRealityView(
-                    store: store,
-                    universeGuideOpacity: $universeGuideOpacity,
-                    colourKeyVisible: $colourKeyVisible,
-                    nodeShapePreference: NodeShapePreference(rawValue: nodeShapePreferenceRaw) ?? .semantic
-                )
+                if usesListFallback {
+                    FocusListFallbackView(store: store)
+                } else {
+                    FocusRealityView(
+                        store: store,
+                        universeGuideOpacity: $universeGuideOpacity,
+                        colourKeyVisible: $colourKeyVisible,
+                        nodeShapePreference: NodeShapePreference(rawValue: nodeShapePreferenceRaw) ?? .semantic
+                    )
+                }
                 if inspectorVisible {
                     Divider()
                     NodeInspector(store: store)
@@ -37,7 +47,7 @@ struct ContentView: View {
             RenameView(node: node) { store.rename(node.id, to: $0) }
         }
         .alert("Focus Space", isPresented: persistenceAlert) {
-            Button("OK") {}
+            Button("OK", action: store.dismissPersistenceMessage)
         } message: {
             Text(store.persistenceMessage ?? "")
         }
@@ -56,6 +66,36 @@ struct ContentView: View {
             var progress = SpatialLearningProgress(rawValue: spatialLearningProgressRaw)
             progress.record(interaction)
             spatialLearningProgressRaw = progress.rawValue
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { store.saveImmediately() }
+        }
+        .fileImporter(
+            isPresented: $importerVisible,
+            allowedContentTypes: [.json],
+            allowsMultipleSelection: false
+        ) { result in
+            do {
+                guard let url = try result.get().first else { return }
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                try store.importMapData(Data(contentsOf: url))
+            } catch {
+                store.reportPersistenceError("Import failed: \(error.localizedDescription)")
+            }
+        }
+        .fileExporter(
+            isPresented: $exporterVisible,
+            document: FocusMapDocument(map: store.map),
+            contentType: .json,
+            defaultFilename: safeExportName
+        ) { result in
+            if case let .failure(error) = result {
+                store.reportPersistenceError("Export failed: \(error.localizedDescription)")
+            }
+        }
+        .sheet(isPresented: $persistenceDiagnosticsVisible) {
+            PersistenceDiagnosticsView(store: store)
         }
         .onKeyPress(.return) {
             guard let id = store.selection else { return .ignored }
@@ -195,11 +235,27 @@ struct ContentView: View {
             .popover(isPresented: $workspaceGuidesVisible, arrowEdge: .top) {
                 WorkspaceGuidesView(
                     store: store,
-                    colourKeyVisible: $colourKeyVisible
+                    colourKeyVisible: $colourKeyVisible,
+                    preferAccessibleList: $preferAccessibleList
                 )
             }
             Button("Spatial guide", systemImage: "questionmark.circle") {
                 spatialGuideVisible = true
+            }
+            Menu("Space file", systemImage: "externaldrive") {
+                Button("Import Space…", systemImage: "square.and.arrow.down") {
+                    importerVisible = true
+                }
+                Button("Export Space…", systemImage: "square.and.arrow.up") {
+                    exporterVisible = true
+                }
+                Divider()
+                Button("Save Now", systemImage: "externaldrive.badge.checkmark") {
+                    store.saveImmediately()
+                }
+                Button("Storage Details…", systemImage: "info.circle") {
+                    persistenceDiagnosticsVisible = true
+                }
             }
             if let id = store.selection {
                 Button(
@@ -282,7 +338,21 @@ struct ContentView: View {
     }
 
     private var persistenceAlert: Binding<Bool> {
-        Binding(get: { store.persistenceMessage != nil }, set: { _ in })
+        Binding(
+            get: { store.persistenceMessage != nil },
+            set: { if !$0 { store.dismissPersistenceMessage() } }
+        )
+    }
+
+    private var safeExportName: String {
+        let cleaned = store.map.title
+            .replacingOccurrences(of: "/", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? "Focus Space" : cleaned
+    }
+
+    private var usesListFallback: Bool {
+        WorkspaceRendererAvailability.usesListFallback(preference: preferAccessibleList)
     }
 
     private func icon(for filter: FocusSpaceStore.Filter) -> String {

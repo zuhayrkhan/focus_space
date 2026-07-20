@@ -1,6 +1,6 @@
 # Focus Space visual experience roadmap
 
-Status: Milestones 0–7 complete; Milestone 8 next
+Status: Milestones 0–8 complete; Milestone 9 next
 
 North star: the polished Focus Space concept supplied on 18 July 2026
 
@@ -184,6 +184,8 @@ Definition of done:
 - Help can always be reopened.
 
 ## Milestone 8 — Persistence, accessibility, and resilience
+
+Status: complete on 20 July 2026
 
 Goal: make the evolved experience safe for real daily use.
 

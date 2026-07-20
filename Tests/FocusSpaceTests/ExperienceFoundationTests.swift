@@ -184,6 +184,36 @@ final class ExperienceFoundationTests: XCTestCase {
     }
 
     @MainActor
+    func testRendererHonoursIncreasedContrastAndAccessibilityTextScale() throws {
+        let renderer = RealityFocusRenderer()
+        let root = renderer.makeScene()
+        let item = FocusSceneSnapshot.Item(
+            id: UUID(),
+            title: "Readable thought",
+            kind: .task,
+            position: .zero,
+            attention: 0.5,
+            parentID: nil,
+            hierarchyDepth: 0,
+            urgency: .none,
+            isEnabled: true,
+            isSelected: false,
+            isDimmed: true
+        )
+        let snapshot = FocusSceneSnapshot(items: [item])
+
+        renderer.reconcile(root: root, snapshot: snapshot, highContrast: false, textScale: 1)
+        let entity = try XCTUnwrap(root.findEntity(named: "node-\(item.id.uuidString)"))
+        XCTAssertEqual(try XCTUnwrap(entity.components[OpacityComponent.self]?.opacity), 0.06, accuracy: 0.001)
+
+        renderer.reconcile(root: root, snapshot: snapshot, highContrast: true, textScale: 1.22)
+        XCTAssertEqual(try XCTUnwrap(entity.components[OpacityComponent.self]?.opacity), 0.15, accuracy: 0.001)
+        XCTAssertTrue(entity.children.contains {
+            $0.name.hasPrefix("decorations-") && $0.name.contains("1.22-true")
+        })
+    }
+
+    @MainActor
     func testUniverseWebIsVolumetricAndItsOpacityIsAdjustable() throws {
         let renderer = RealityFocusRenderer(quality: .efficient)
         let root = renderer.makeScene()

@@ -3,6 +3,7 @@ import SwiftUI
 struct WorkspaceGuidesView: View {
     @ObservedObject var store: FocusSpaceStore
     @Binding var colourKeyVisible: Bool
+    @Binding var preferAccessibleList: Bool
 
     var body: some View {
         ScrollView {
@@ -62,6 +63,20 @@ struct WorkspaceGuidesView: View {
                             get: { store.map.isGravityEnabled },
                             set: store.setGravityEnabled
                         ))
+                    }
+                    .padding(.top, 8)
+                }
+
+                DisclosureGroup("Accessibility & display") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle("Use accessible list view", isOn: $preferAccessibleList)
+                        Text("A keyboard- and VoiceOver-friendly 2D view using the same map and attention values.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if !WorkspaceRendererAvailability.supportsAdvancedEffects {
+                            Label("3D effects are unavailable, so list view is active.", systemImage: "exclamationmark.triangle")
+                                .font(.caption)
+                        }
                     }
                     .padding(.top, 8)
                 }

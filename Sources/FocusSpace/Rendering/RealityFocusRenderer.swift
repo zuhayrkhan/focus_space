@@ -15,6 +15,8 @@ final class RealityFocusRenderer {
     private var nodeMeshes: [String: MeshResource] = [:]
     private var relationshipKeys: [String: RelationshipRenderKey] = [:]
     private var shapePreference: NodeShapePreference = .semantic
+    private var highContrast = false
+    private var textScale: Float = 1
     private(set) var isAmbientMotionPaused = false
 
     init(
@@ -38,12 +40,18 @@ final class RealityFocusRenderer {
     func reconcile(
         root: Entity,
         snapshot: FocusSceneSnapshot,
-        shapePreference: NodeShapePreference = .semantic
+        shapePreference: NodeShapePreference = .semantic,
+        highContrast: Bool = false,
+        textScale: Float = 1
     ) {
         let shapeChanged = self.shapePreference != shapePreference
-        guard lastSnapshot != snapshot || shapeChanged else { return }
+        let accessibilityChanged = self.highContrast != highContrast || self.textScale != textScale
+        guard lastSnapshot != snapshot || shapeChanged || accessibilityChanged else { return }
         self.shapePreference = shapePreference
-        let previousItems = shapeChanged
+        self.highContrast = highContrast
+        self.textScale = textScale
+        if accessibilityChanged { relationshipKeys.removeAll() }
+        let previousItems = shapeChanged || accessibilityChanged
             ? [:]
             : Dictionary(uniqueKeysWithValues: (lastSnapshot?.items ?? []).map { ($0.id, $0) })
 
@@ -283,10 +291,13 @@ final class RealityFocusRenderer {
         }
         guard needsVisualUpdate(from: previous, to: item) else { return }
         let contextOpacity: Float = switch item.contextRole {
-        case .subdued: 0.50
+        case .subdued: highContrast ? 0.68 : 0.50
         case .none, .branch, .direct: 1
         }
-        entity.components.set(OpacityComponent(opacity: item.isDimmed ? 0.06 : style.opacity * contextOpacity))
+        let visibleOpacity = highContrast ? max(style.opacity, 0.72) : style.opacity
+        entity.components.set(OpacityComponent(
+            opacity: item.isDimmed ? (highContrast ? 0.15 : 0.06) : visibleOpacity * contextOpacity
+        ))
         let depthScale = Float(0.78 + item.attention * 0.24)
         entity.scale = SIMD3<Float>(repeating: depthScale)
 
@@ -446,7 +457,7 @@ final class RealityFocusRenderer {
         let notes = NodeNotesLayout.displayText(item.notes)
         let showsNotes = item.isSelected && !notes.isEmpty
         let attentionBand = Int(item.attention * 20)
-        let decorationName = "decorations-\(style.silhouette)-\(style.width)-\(style.height)-\(item.kind.rawValue)-\(item.urgency.rawValue)-\(item.isEnabled)-\(item.isSelected)-\(item.isHovered)-\(item.contextRole)-\(attentionBand)-\(title)-\(notes.hashValue)"
+        let decorationName = "decorations-\(style.silhouette)-\(style.width)-\(style.height)-\(item.kind.rawValue)-\(item.urgency.rawValue)-\(item.isEnabled)-\(item.isSelected)-\(item.isHovered)-\(item.contextRole)-\(attentionBand)-\(textScale)-\(highContrast)-\(title)-\(notes.hashValue)"
         if entity.children.contains(where: { $0.name == decorationName }) { return }
         for child in entity.children where child.name.hasPrefix("decorations-") { child.removeFromParent() }
 
@@ -463,7 +474,10 @@ final class RealityFocusRenderer {
         ))
 
         let renderedTitle = showsNotes ? title : (title.contains("\n") ? title : "\n\(title)")
-        let font = NSFont.systemFont(ofSize: 0.13, weight: item.isSelected ? .semibold : .medium)
+        let font = NSFont.systemFont(
+            ofSize: 0.13 * CGFloat(textScale),
+            weight: item.isSelected ? .semibold : .medium
+        )
         let mesh = MeshResource.generateText(
             renderedTitle,
             extrusionDepth: 0.002,
@@ -477,7 +491,9 @@ final class RealityFocusRenderer {
             alignment: .center,
             lineBreakMode: .byTruncatingTail
         )
-        let labelAlpha = item.isDimmed ? 0.2 : 0.76 + item.attention * 0.24
+        let labelAlpha = item.isDimmed
+            ? (highContrast ? 0.38 : 0.2)
+            : (highContrast ? 1 : 0.76 + item.attention * 0.24)
         let material = UnlitMaterial(color: NSColor(white: 0.98, alpha: labelAlpha))
         let label = ModelEntity(mesh: mesh, materials: [material])
         label.name = "node-label"
@@ -500,7 +516,10 @@ final class RealityFocusRenderer {
             let notesMesh = MeshResource.generateText(
                 notes,
                 extrusionDepth: 0.001,
-                font: .systemFont(ofSize: 0.092, weight: .regular),
+                font: .systemFont(
+                    ofSize: 0.092 * CGFloat(textScale),
+                    weight: highContrast ? .medium : .regular
+                ),
                 containerFrame: CGRect(
                     x: 0,
                     y: 0,
@@ -729,7 +748,8 @@ final class RealityFocusRenderer {
         case .direct: 0.72
         }
         let attention = Float(0.52 + relationship.attention * 0.48)
-        return emphasis * attention * (relationship.isDimmed ? 0.22 : 1)
+        let result = emphasis * attention * (relationship.isDimmed ? (highContrast ? 0.38 : 0.22) : 1)
+        return highContrast ? max(result, relationship.isDimmed ? 0.14 : 0.34) : result
     }
 
     private func relationshipThickness(_ relationship: FocusSceneSnapshot.Relationship) -> Float {

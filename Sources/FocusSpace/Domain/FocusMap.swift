@@ -20,7 +20,14 @@ struct FocusMap: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        _ = try container.decodeIfPresent(Int.self, forKey: .version)
+        let decodedVersion = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        guard decodedVersion <= Self.currentVersion else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .version,
+                in: container,
+                debugDescription: "This map uses newer schema version \(decodedVersion); this app supports through version \(Self.currentVersion)."
+            )
+        }
         version = Self.currentVersion
         title = try container.decode(String.self, forKey: .title)
         nodes = try container.decode([FocusNode].self, forKey: .nodes)

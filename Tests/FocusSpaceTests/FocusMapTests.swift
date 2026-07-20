@@ -87,6 +87,71 @@ final class FocusMapTests: XCTestCase {
         XCTAssertEqual(migrated.nodes.first?.gravityPreference, .inherit)
     }
 
+    func testVersionTwoJSONPreservesVisualSemanticsAndAddsNotesDefaults() throws {
+        let data = Data("""
+        {
+          "version": 2,
+          "title": "Version two",
+          "nodes": [{
+            "id": "F0C05ACE-0002-4000-8000-000000000002",
+            "title": "Existing group",
+            "kind": "group",
+            "position": { "x": 2.0, "y": -2.0 },
+            "attention": 0.62,
+            "relatedNodeIDs": [],
+            "urgency": "soon",
+            "isEnabled": false,
+            "createdAt": "2027-01-15T08:00:00Z",
+            "updatedAt": "2027-01-15T08:00:00Z"
+          }]
+        }
+        """.utf8)
+
+        let migrated = try FocusMapJSONCodec.decode(data)
+
+        XCTAssertEqual(migrated.version, 4)
+        XCTAssertEqual(migrated.title, "Version two")
+        XCTAssertEqual(migrated.nodes.first?.kind, .group)
+        XCTAssertEqual(migrated.nodes.first?.attention, 0.62)
+        XCTAssertEqual(migrated.nodes.first?.urgency, .soon)
+        XCTAssertEqual(migrated.nodes.first?.isEnabled, false)
+        XCTAssertEqual(migrated.nodes.first?.notes, "")
+        XCTAssertFalse(migrated.isGravityEnabled)
+    }
+
+    func testVersionThreeJSONPreservesNotesAndAddsTemporalDefaults() throws {
+        let data = Data("""
+        {
+          "version": 3,
+          "title": "Version three",
+          "nodes": [{
+            "id": "F0C05ACE-0003-4000-8000-000000000003",
+            "title": "Documented thought",
+            "notes": "Do not lose this context.",
+            "kind": "reference",
+            "position": { "x": -1.5, "y": 1.25 },
+            "attention": 0.47,
+            "relatedNodeIDs": [],
+            "urgency": "none",
+            "isEnabled": true,
+            "createdAt": "2027-01-15T08:00:00Z",
+            "updatedAt": "2027-01-15T08:00:00Z"
+          }]
+        }
+        """.utf8)
+
+        let migrated = try FocusMapJSONCodec.decode(data)
+
+        XCTAssertEqual(migrated.version, 4)
+        XCTAssertEqual(migrated.nodes.first?.notes, "Do not lose this context.")
+        XCTAssertEqual(migrated.nodes.first?.kind, .reference)
+        XCTAssertNil(migrated.nodes.first?.dueDate)
+        XCTAssertNil(migrated.nodes.first?.milestoneDate)
+        XCTAssertNil(migrated.nodes.first?.reminderDate)
+        XCTAssertEqual(migrated.nodes.first?.gravityPreference, .inherit)
+        XCTAssertFalse(migrated.isGravityEnabled)
+    }
+
     func testVersionFourPersistsTemporalSignalsAndGravityPolicy() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         let repository = JSONFocusMapRepository(fileURL: folder.appending(path: "map.json"))
@@ -114,5 +179,17 @@ final class FocusMapTests: XCTestCase {
         XCTAssertEqual(loaded.version, 4)
         XCTAssertTrue(loaded.isGravityEnabled)
         XCTAssertEqual(loaded.nodes.first?.gravityPreference, .enabled)
+    }
+
+    func testNewerSchemaIsRejectedInsteadOfSilentlyLosingFields() {
+        let data = Data("""
+        {
+          "version": 99,
+          "title": "Future space",
+          "nodes": []
+        }
+        """.utf8)
+
+        XCTAssertThrowsError(try FocusMapJSONCodec.decode(data))
     }
 }
