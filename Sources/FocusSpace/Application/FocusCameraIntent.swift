@@ -10,6 +10,9 @@ struct FocusCameraIntent: Equatable, Sendable {
     }
 
     struct Pose: Equatable, Sendable {
+        static let minimumDistance = 4.2
+        static let maximumDistance = 32.0
+
         var target: SpatialPoint
         var targetAttention: Double
         var yaw: Double
@@ -33,7 +36,7 @@ struct FocusCameraIntent: Equatable, Sendable {
                 targetAttention: min(max(targetAttention, 0), 1),
                 yaw: min(max(yaw, -55), 55),
                 pitch: min(max(pitch, -34), 34),
-                distance: min(max(distance, 4.2), 32)
+                distance: min(max(distance, Self.minimumDistance), Self.maximumDistance)
             )
         }
     }

@@ -397,7 +397,7 @@ final class FocusSpaceStore: ObservableObject {
             targetAttention: attention,
             yaw: 0,
             pitch: 0,
-            distance: min(max(7 + span * 0.72, 9.8), 18)
+            distance: min(max(7 + span * 0.72, 9.8), FocusCameraIntent.Pose.maximumDistance)
         ).bounded()
         cameraIntent = FocusCameraIntent(
             pose: pose,
@@ -578,10 +578,7 @@ final class FocusSpaceStore: ObservableObject {
         let node = FocusNode(
             title: parent == nil ? "New thought" : "New direction",
             kind: parent == nil ? .project : .task,
-            position: SpatialPoint(
-                x: (parent?.position.x ?? 0) + 1.45,
-                y: (parent?.position.y ?? 0) - 0.85
-            ),
+            position: MindMapArranger.positionForNewChild(in: map, parentID: parentID),
             attention: parent?.attention ?? 0.65,
             parentID: parentID
         )

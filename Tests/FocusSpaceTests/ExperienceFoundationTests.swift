@@ -609,9 +609,16 @@ final class ExperienceFoundationTests: XCTestCase {
         store.arrangeMindMap()
 
         XCTAssertEqual(Set(store.map.nodes.map(\.position)).count, store.map.nodes.count)
-        XCTAssertGreaterThan(store.map.node(id: root.id)!.position.y, store.map.node(id: first.id)!.position.y)
-        XCTAssertGreaterThan(store.map.node(id: first.id)!.position.y, store.map.node(id: leaf.id)!.position.y)
-        XCTAssertGreaterThan(abs(store.map.node(id: first.id)!.position.x - store.map.node(id: second.id)!.position.x), 1.6)
+        XCTAssertEqual(store.map.node(id: root.id)!.position, .zero)
+        XCTAssertLessThan(store.map.node(id: first.id)!.position.x * store.map.node(id: second.id)!.position.x, 0)
+        XCTAssertGreaterThan(
+            abs(store.map.node(id: leaf.id)!.position.x),
+            abs(store.map.node(id: first.id)!.position.x)
+        )
+        XCTAssertEqual(
+            store.map.node(id: leaf.id)!.position.x.sign,
+            store.map.node(id: first.id)!.position.x.sign
+        )
         XCTAssertTrue(store.map.nodes.allSatisfy { $0.attention == attention[$0.id] })
         XCTAssertTrue(store.canUndo)
         XCTAssertEqual(store.cameraIntent.mode, .overview)
@@ -627,6 +634,32 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertEqual(Set(positions.values).count, nodes.count)
         XCTAssertGreaterThan(Set(positions.values.map(\.y)).count, 2)
         XCTAssertLessThanOrEqual(positions.values.map { abs($0.x) }.max() ?? 0, 4.4)
+    }
+
+    func testArrangeMindMapPacksRootedIslandsInCentredTwoColumnRows() {
+        let roots = (0..<5).map { FocusNode(title: "Root \($0)") }
+        let children = roots.map { FocusNode(title: "Child of \($0.title)", parentID: $0.id) }
+        let positions = MindMapArranger.positions(for: FocusMap(nodes: roots + children))
+        let rootPositions = roots.compactMap { positions[$0.id] }
+
+        XCTAssertEqual(rootPositions.count, roots.count)
+        XCTAssertEqual(Set(rootPositions.map(\.y)).count, 3)
+        XCTAssertEqual(rootPositions.filter { abs($0.x) < 0.001 }.count, 1)
+        XCTAssertLessThanOrEqual(Set(rootPositions.map(\.x)).count, 3)
+    }
+
+    func testNewChildrenContinueOutwardAlongTheirMindMapBranch() throws {
+        let root = FocusNode(title: "Root")
+        let branch = FocusNode(title: "Branch", parentID: root.id)
+        var map = FocusMap(nodes: [root, branch])
+        let arranged = MindMapArranger.positions(for: map)
+        map.updateNode(id: root.id) { $0.move(to: arranged[root.id]!) }
+        map.updateNode(id: branch.id) { $0.move(to: arranged[branch.id]!) }
+
+        let childPosition = MindMapArranger.positionForNewChild(in: map, parentID: branch.id)
+
+        XCTAssertEqual(childPosition.x.sign, map.node(id: branch.id)!.position.x.sign)
+        XCTAssertGreaterThan(abs(childPosition.x), abs(map.node(id: branch.id)!.position.x))
     }
 
     func testCameraPoseAppliesSoftWorkspaceBounds() {

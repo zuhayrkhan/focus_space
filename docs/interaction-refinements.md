@@ -12,12 +12,14 @@ Selection increases the emphasis of a branch; it no longer determines whether ot
 
 ## Arrange mind map
 
-**Arrange Mind Map** is available in the toolbar, the View menu, and with `Command-Shift-L`. A renderer-independent tidy-tree layout:
+**Arrange Mind Map** is available in the toolbar, the View menu, and with `Command-Shift-L`. A renderer-independent bilateral mind-map layout:
 
 - preserves attention and therefore semantic Z
-- places parents above descendants
-- centres parents over their children
+- keeps each real root at the centre of its map
+- balances first-level branches across the left and right sides
+- grows descendants outward while centring parents across their own leaves
 - separates siblings and overlapping cards
+- packs several rooted maps as centred two-column islands
 - uses a compact grid for a large set of independent thoughts
 - frames the complete result in an overview camera pose
 - records one Undo step

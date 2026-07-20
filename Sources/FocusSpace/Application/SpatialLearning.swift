@@ -20,7 +20,7 @@ enum SpatialGuideStep: Int, CaseIterable, Identifiable, Sendable {
     var explanation: String {
         switch self {
         case .depth: "Near and bright means now. Far and quiet means deliberately parked."
-        case .hierarchy: "Arrange parent ideas above their detail; links keep the structure readable."
+        case .hierarchy: "Place a central thought at the heart of the map; its branches grow outward on both sides."
         case .branchMovement: "Two-finger drag vertically over a parent to carry its branch in depth. Option-drag remains available for pointer control."
         case .gravity: "Dates can gently pull work closer, but a manual move always wins for seven days."
         }
