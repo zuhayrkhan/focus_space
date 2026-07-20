@@ -42,6 +42,7 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
     case shallowHierarchy = "Shallow hierarchy"
     case deepHierarchy = "Deep hierarchy"
     case denseMap = "Dense map"
+    case largeMap = "Large map (180 thoughts)"
     case parkedWork = "Parked work"
     case emptySpace = "Empty space"
 
@@ -53,6 +54,7 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
         case .shallowHierarchy: return "shallow"
         case .deepHierarchy: return "deep"
         case .denseMap: return "dense"
+        case .largeMap: return "large"
         case .parkedWork: return "parked"
         case .emptySpace: return "empty"
         }
@@ -143,6 +145,26 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
                     urgency: index % 13 == 0 ? .overdue : (index % 9 == 0 ? .soon : .none),
                     isEnabled: index % 11 != 0,
                     relatedIndices: index % 11 == 0 ? [(index + 9) % 32] : []
+                )
+            }
+            return Self.makeMap(title: rawValue, specifications: specs)
+        case .largeMap:
+            let count = 180
+            let rootCount = 18
+            let specs = (0..<count).map { index in
+                let column = Double(index % 15) - 7
+                let row = Double(index / 15)
+                let kinds = FocusNodeKind.allCases
+                return Specification(
+                    index % 37 == 0 ? "A deliberately long thought title \(index + 1)" : "Focus item \(index + 1)",
+                    column * 0.92,
+                    4.2 - row * 0.72,
+                    0.08 + Double((index * 29) % 88) / 100,
+                    index < rootCount ? nil : index % rootCount,
+                    kind: kinds[index % kinds.count],
+                    urgency: index % 41 == 0 ? .overdue : (index % 23 == 0 ? .soon : .none),
+                    isEnabled: index % 31 != 0,
+                    relatedIndices: index % 29 == 0 ? [(index + 47) % count] : []
                 )
             }
             return Self.makeMap(title: rawValue, specifications: specs)

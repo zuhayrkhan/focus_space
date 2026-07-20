@@ -4,6 +4,7 @@ struct WorkspaceGuidesView: View {
     @ObservedObject var store: FocusSpaceStore
     @Binding var colourKeyVisible: Bool
     @Binding var preferAccessibleList: Bool
+    @Binding var soundEffectsEnabled: Bool
 
     var body: some View {
         ScrollView {
@@ -77,6 +78,16 @@ struct WorkspaceGuidesView: View {
                             Label("3D effects are unavailable, so list view is active.", systemImage: "exclamationmark.triangle")
                                 .font(.caption)
                         }
+                    }
+                    .padding(.top, 8)
+                }
+
+                DisclosureGroup("Sound & motion") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle("Subtle interaction sounds", isOn: $soundEffectsEnabled)
+                        Text("Quiet selection and depth cues. Off by default; system Reduce Motion is always respected.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                     .padding(.top, 8)
                 }

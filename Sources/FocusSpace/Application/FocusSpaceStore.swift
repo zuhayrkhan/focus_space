@@ -23,6 +23,7 @@ final class FocusSpaceStore: ObservableObject {
     @Published private(set) var persistenceMessage: String?
     @Published private(set) var lastSavedAt: Date?
     @Published private(set) var recoveredFromBackup = false
+    @Published private(set) var lastAutosaveLatencyMilliseconds: Double?
     @Published private(set) var gravityEvaluationDate: Date
     @Published private(set) var latestInteraction: WorkspaceInteraction?
     @Published private(set) var interactionRevision = 0
@@ -49,6 +50,9 @@ final class FocusSpaceStore: ObservableObject {
             let outcome = try repository.loadRecovering()
             map = outcome.map ?? Self.sampleMap
             recoveredFromBackup = outcome.source == .recovery
+            if recoveredFromBackup {
+                persistenceMessage = "Your last valid backup was restored. The damaged primary file was left available in Storage Details."
+            }
         } catch {
             map = Self.sampleMap
             persistenceMessage = "Couldn’t open the saved space: \(error.localizedDescription)"
@@ -638,12 +642,16 @@ final class FocusSpaceStore: ObservableObject {
         saveTask?.cancel()
         let repository = repository
         let map = map
+        let scheduledAt = ContinuousClock.now
         saveTask = Task {
             try? await Task.sleep(for: autosaveDelay)
             guard !Task.isCancelled else { return }
             do {
                 try repository.save(map)
                 lastSavedAt = nowProvider()
+                let elapsed = scheduledAt.duration(to: .now).components
+                lastAutosaveLatencyMilliseconds = Double(elapsed.seconds) * 1_000
+                    + Double(elapsed.attoseconds) / 1_000_000_000_000_000
                 persistenceMessage = nil
             } catch {
                 persistenceMessage = "Autosave paused: \(error.localizedDescription)"

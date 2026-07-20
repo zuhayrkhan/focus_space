@@ -24,6 +24,19 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertTrue(northStar.contains { $0.urgency == .overdue })
         XCTAssertTrue(northStar.contains { !$0.isEnabled })
         XCTAssertFalse(DemoScene.deepHierarchy.map.nodes.first?.notes.isEmpty ?? true)
+        XCTAssertEqual(DemoScene.largeMap.map.nodes.count, 180)
+        XCTAssertGreaterThan(DemoScene.largeMap.map.nodes.filter { $0.parentID != nil }.count, 150)
+    }
+
+    func testOptionalSoundEnvelopeStaysSubtleAndDecaysCleanly() {
+        for cue in [FocusSoundCue.selection, .depth] {
+            let samples = FocusSoundEnvelope.samples(for: cue)
+            XCTAssertGreaterThan(samples.count, 2_000)
+            XCTAssertLessThanOrEqual(samples.map(abs).max() ?? 1, 0.0281)
+            let firstHalf = samples.prefix(samples.count / 2).map(abs).max() ?? 0
+            let tail = samples.suffix(samples.count / 8).map(abs).max() ?? 1
+            XCTAssertLessThan(tail, firstHalf * 0.2)
+        }
     }
 
     func testVisualLanguageUsesShapeGlyphAndIntensityAsWellAsColour() {

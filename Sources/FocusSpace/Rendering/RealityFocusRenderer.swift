@@ -135,7 +135,7 @@ final class RealityFocusRenderer {
         let transform = Transform(scale: .one, rotation: orientation, translation: position)
         camera.stopAllAnimations(recursive: false)
         if animated, !reduceMotion {
-            camera.move(to: transform, relativeTo: root, duration: 0.58, timingFunction: .easeInOut)
+            camera.move(to: transform, relativeTo: root, duration: FocusMotion.cameraDuration, timingFunction: .easeInOut)
         } else {
             camera.transform = transform
         }
@@ -285,7 +285,7 @@ final class RealityFocusRenderer {
                 translation: targetPosition
             )
             entity.stopAllAnimations(recursive: false)
-            entity.move(to: target, relativeTo: entity.parent, duration: 0.72, timingFunction: .easeInOut)
+            entity.move(to: target, relativeTo: entity.parent, duration: FocusMotion.gravityDuration, timingFunction: .easeInOut)
         } else {
             entity.position = targetPosition
         }

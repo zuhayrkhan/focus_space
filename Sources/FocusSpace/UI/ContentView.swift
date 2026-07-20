@@ -11,11 +11,15 @@ struct ContentView: View {
     @AppStorage("hasCompletedSpatialGuide") private var hasCompletedSpatialGuide = false
     @AppStorage("spatialLearningProgress") private var spatialLearningProgressRaw = 0
     @AppStorage("preferAccessibleList") private var preferAccessibleList = false
+    @AppStorage("soundEffectsEnabled") private var soundEffectsEnabled = false
     @State private var spatialGuideVisible = false
     @State private var workspaceGuidesVisible = false
     @State private var importerVisible = false
     @State private var exporterVisible = false
     @State private var persistenceDiagnosticsVisible = false
+    @State private var importInProgress = false
+    @StateObject private var performanceMonitor = ReleasePerformanceMonitor()
+    @StateObject private var soundPlayer = FocusSoundPlayer()
 
     var body: some View {
         NavigationSplitView {
@@ -40,6 +44,13 @@ struct ContentView: View {
             }
             .overlay(alignment: .top) { searchField }
             .overlay(alignment: .bottomLeading) { contextualHint }
+            .overlay { workspaceStateOverlay }
+            .overlay(alignment: .topLeading) {
+                if showsPerformanceHUD {
+                    PerformanceHUD(monitor: performanceMonitor, store: store)
+                        .padding(12)
+                }
+            }
         }
         .navigationTitle(store.map.title)
         .toolbar { toolbar }
@@ -47,7 +58,11 @@ struct ContentView: View {
             RenameView(node: node) { store.rename(node.id, to: $0) }
         }
         .alert("Focus Space", isPresented: persistenceAlert) {
-            Button("OK", action: store.dismissPersistenceMessage)
+            Button("Storage Details") {
+                store.dismissPersistenceMessage()
+                persistenceDiagnosticsVisible = true
+            }
+            Button("Dismiss", role: .cancel, action: store.dismissPersistenceMessage)
         } message: {
             Text(store.persistenceMessage ?? "")
         }
@@ -66,6 +81,13 @@ struct ContentView: View {
             var progress = SpatialLearningProgress(rawValue: spatialLearningProgressRaw)
             progress.record(interaction)
             spatialLearningProgressRaw = progress.rawValue
+            if soundEffectsEnabled {
+                switch interaction {
+                case .selectedThought: soundPlayer.play(.selection)
+                case .changedDepth: soundPlayer.play(.depth)
+                case .navigatedUniverse: break
+                }
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { store.saveImmediately() }
@@ -79,7 +101,17 @@ struct ContentView: View {
                 guard let url = try result.get().first else { return }
                 let accessed = url.startAccessingSecurityScopedResource()
                 defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-                try store.importMapData(Data(contentsOf: url))
+                let data = try Data(contentsOf: url)
+                importInProgress = true
+                Task { @MainActor in
+                    await Task.yield()
+                    defer { importInProgress = false }
+                    do {
+                        try store.importMapData(data)
+                    } catch {
+                        store.reportPersistenceError("Import failed: \(error.localizedDescription)")
+                    }
+                }
             } catch {
                 store.reportPersistenceError("Import failed: \(error.localizedDescription)")
             }
@@ -124,7 +156,7 @@ struct ContentView: View {
                 .padding(.top, 10)
             ForEach(FocusSpaceStore.Filter.allCases) { filter in
                 Button {
-                    withAnimation(.spring(response: 0.45, dampingFraction: 0.86)) { store.filter = filter }
+                    withAnimation(FocusMotion.calmSpring) { store.filter = filter }
                 } label: {
                     Label(filter.rawValue, systemImage: icon(for: filter))
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -181,7 +213,7 @@ struct ContentView: View {
                 Divider()
                 ForEach(DemoScene.allCases) { scene in
                     Button {
-                        withAnimation(.spring(response: 0.5, dampingFraction: 0.86)) {
+                        withAnimation(FocusMotion.calmSpring) {
                             store.preview(scene)
                         }
                     } label: {
@@ -202,10 +234,6 @@ struct ContentView: View {
             }
             .menuStyle(.borderlessButton)
             .padding(.horizontal, 12)
-            Text("Depth is attention")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .padding(12)
         }
         .frame(minWidth: 175)
         .background(.ultraThinMaterial)
@@ -236,7 +264,8 @@ struct ContentView: View {
                 WorkspaceGuidesView(
                     store: store,
                     colourKeyVisible: $colourKeyVisible,
-                    preferAccessibleList: $preferAccessibleList
+                    preferAccessibleList: $preferAccessibleList,
+                    soundEffectsEnabled: $soundEffectsEnabled
                 )
             }
             Button("Spatial guide", systemImage: "questionmark.circle") {
@@ -262,13 +291,13 @@ struct ContentView: View {
                     store.isFocusModeEnabled ? "Show all branches" : "Focus selected branch",
                     systemImage: store.isFocusModeEnabled ? "eye" : "scope"
                 ) {
-                    withAnimation(.easeInOut(duration: 0.25)) { store.toggleFocusMode() }
+                withAnimation(FocusMotion.quickFade) { store.toggleFocusMode() }
                 }
                 Button("Pull forward", systemImage: "arrow.up.to.line") { store.shiftAttention(id, by: 0.12) }
                 Button("Push back", systemImage: "arrow.down.to.line") { store.shiftAttention(id, by: -0.12) }
             }
             Button(inspectorVisible ? "Hide inspector" : "Show inspector", systemImage: "sidebar.right") {
-                withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) {
+                withAnimation(FocusMotion.quickSpring) {
                     inspectorVisible.toggle()
                 }
             }
@@ -330,6 +359,18 @@ struct ContentView: View {
         }
     }
 
+    @ViewBuilder
+    private var workspaceStateOverlay: some View {
+        if importInProgress || CommandLine.arguments.contains("--simulate-loading") {
+            WorkspaceLoadingView()
+        } else if store.map.nodes.isEmpty {
+            EmptySpaceView(
+                addFirstThought: { store.addChild(to: nil) },
+                importSpace: { importerVisible = true }
+            )
+        }
+    }
+
     private var editingBinding: Binding<FocusNode?> {
         Binding(
             get: { store.editingNodeID.flatMap(store.map.node(id:)) },
@@ -353,6 +394,10 @@ struct ContentView: View {
 
     private var usesListFallback: Bool {
         WorkspaceRendererAvailability.usesListFallback(preference: preferAccessibleList)
+    }
+
+    private var showsPerformanceHUD: Bool {
+        CommandLine.arguments.contains("--performance-hud")
     }
 
     private func icon(for filter: FocusSpaceStore.Filter) -> String {

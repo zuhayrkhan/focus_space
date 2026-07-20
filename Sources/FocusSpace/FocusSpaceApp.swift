@@ -26,12 +26,13 @@ struct FocusSpaceApp: App {
     }
 
     var body: some Scene {
+        let windowSize = ReleaseWindowConfiguration.requestedSize
         WindowGroup {
             ContentView(store: store)
                 .frame(minWidth: 980, minHeight: 650)
                 .preferredColorScheme(.dark)
         }
-        .defaultSize(width: 1240, height: 780)
+        .defaultSize(width: windowSize.width, height: windowSize.height)
         .commands {
             CommandGroup(replacing: .undoRedo) {
                 Button("Undo", action: store.undo)
@@ -103,6 +104,19 @@ struct FocusSpaceApp: App {
                 .keyboardShortcut(.downArrow, modifiers: [.option, .command])
                 .disabled(store.selection == nil)
             }
+        }
+    }
+}
+
+enum ReleaseWindowConfiguration {
+    static var requestedSize: (width: CGFloat, height: CGFloat) {
+        let arguments = CommandLine.arguments
+        guard let index = arguments.firstIndex(of: "--window-size"),
+              arguments.indices.contains(index + 1) else { return (1240, 780) }
+        return switch arguments[index + 1] {
+        case "compact": (980, 650)
+        case "large": (1600, 1000)
+        default: (1240, 780)
         }
     }
 }

@@ -1,6 +1,6 @@
 # Focus Space visual experience roadmap
 
-Status: Milestones 0–8 complete; Milestone 9 next
+Status: Milestones 0–8 complete; Milestone 9 implemented and release-audited, with public notarisation awaiting release-owner credentials
 
 North star: the polished Focus Space concept supplied on 18 July 2026
 

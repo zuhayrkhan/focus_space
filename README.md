@@ -27,7 +27,21 @@ Launch a deterministic experience-review scene without touching personal autosav
 ./Scripts/run-app.sh --demo north-star
 ```
 
-Available demo slugs are `north-star`, `shallow`, `deep`, `dense`, `parked`, and `empty`.
+Available demo slugs are `north-star`, `shallow`, `deep`, `dense`, `large`, `parked`, and `empty`.
+
+Profile the 180-thought release fixture with the efficient quality path:
+
+```sh
+./Scripts/run-app.sh --demo large --quality efficient --performance-hud
+```
+
+Run the reproducible release gate or follow Developer ID notarisation instructions:
+
+```sh
+./Scripts/release-check.sh
+```
+
+See [Release and notarisation](docs/release.md).
 
 The first launch creates a small example map. Changes autosave as readable JSON in
 `~/Library/Application Support/Focus Space/focus-space.json`.
@@ -53,6 +67,7 @@ RealityKit types do not cross into the domain or application layers.
 - [Milestone 6 gravity and time](docs/milestone-6-gravity-and-time.md)
 - [Milestone 7 progressive disclosure and onboarding](docs/milestone-7-progressive-disclosure.md)
 - [Milestone 8 persistence, accessibility, and resilience](docs/milestone-8-persistence-accessibility-resilience.md)
+- [Milestone 9 delight and release hardening](docs/milestone-9-delight-release.md)
 - [Interaction refinements from Ibrahim's review](docs/interaction-refinements.md)
 - [Branch focus, shape preferences, and selected notes](docs/branch-focus-shapes-and-notes.md)
 - [Visual north star](docs/reference/focus-space-visual-north-star.png)

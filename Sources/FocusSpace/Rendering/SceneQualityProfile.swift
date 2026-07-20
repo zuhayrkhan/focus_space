@@ -28,7 +28,12 @@ enum SceneQualityProfile: String, CaseIterable, Sendable {
     }
 
     static var recommended: Self {
-        recommended(
+        if let index = CommandLine.arguments.firstIndex(of: "--quality"),
+           CommandLine.arguments.indices.contains(index + 1),
+           let override = Self(rawValue: CommandLine.arguments[index + 1]) {
+            return override
+        }
+        return recommended(
             isLowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
             physicalMemory: ProcessInfo.processInfo.physicalMemory
         )

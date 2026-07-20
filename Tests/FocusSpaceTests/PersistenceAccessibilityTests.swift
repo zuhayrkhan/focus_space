@@ -53,6 +53,8 @@ final class PersistenceAccessibilityTests: XCTestCase {
         let saved = try XCTUnwrap(repository.load())
         XCTAssertEqual(saved.nodes.first?.title, "After autosave")
         XCTAssertNotNil(store.lastSavedAt)
+        XCTAssertNotNil(store.lastAutosaveLatencyMilliseconds)
+        XCTAssertGreaterThanOrEqual(store.lastAutosaveLatencyMilliseconds ?? 0, 4)
     }
 
     @MainActor
