@@ -27,7 +27,7 @@ Launch a deterministic experience-review scene without touching personal autosav
 ./Scripts/run-app.sh --demo north-star
 ```
 
-Available demo slugs are `north-star`, `shallow`, `deep`, `dense`, `large`, `parked`, and `empty`.
+Available demo slugs are `north-star`, `shallow`, `deep`, `dense`, `large`, `animals`, `plants`, `parked`, and `empty`.
 
 Profile the 180-thought release fixture with the efficient quality path:
 

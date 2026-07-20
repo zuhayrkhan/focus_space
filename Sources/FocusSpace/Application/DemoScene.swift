@@ -38,11 +38,25 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    private struct TaxonomyBranch {
+        let title: String
+        let notes: String
+        let families: [TaxonomyFamily]
+    }
+
+    private struct TaxonomyFamily {
+        let title: String
+        let notes: String
+        let species: [String]
+    }
+
     case northStar = "North-star composition"
     case shallowHierarchy = "Shallow hierarchy"
     case deepHierarchy = "Deep hierarchy"
     case denseMap = "Dense map"
     case largeMap = "Large map (180 thoughts)"
+    case animalFamilies = "Animal family atlas"
+    case plantFamilies = "Plant family atlas"
     case parkedWork = "Parked work"
     case emptySpace = "Empty space"
 
@@ -55,6 +69,8 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
         case .deepHierarchy: return "deep"
         case .denseMap: return "dense"
         case .largeMap: return "large"
+        case .animalFamilies: return "animals"
+        case .plantFamilies: return "plants"
         case .parkedWork: return "parked"
         case .emptySpace: return "empty"
         }
@@ -168,6 +184,10 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
                 )
             }
             return Self.makeMap(title: rawValue, specifications: specs)
+        case .animalFamilies:
+            return Self.makeTaxonomyMap(title: rawValue, branches: Self.animalBranches)
+        case .plantFamilies:
+            return Self.makeTaxonomyMap(title: rawValue, branches: Self.plantBranches)
         case .parkedWork:
             return Self.makeMap(
                 title: rawValue,
@@ -182,6 +202,151 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
             return FocusMap(title: rawValue)
         }
     }
+
+    private static func makeTaxonomyMap(
+        title: String,
+        branches: [TaxonomyBranch]
+    ) -> FocusMap {
+        var specifications: [Specification] = []
+        let branchSpacing = 4.0
+        for (branchIndex, branch) in branches.enumerated() {
+            let rootX = (Double(branchIndex) - Double(branches.count - 1) / 2) * branchSpacing
+            let rootIndex = specifications.count
+            specifications.append(Specification(
+                branch.title,
+                rootX,
+                3.2 + (branchIndex.isMultiple(of: 2) ? 0.12 : -0.12),
+                0.46 + Double(branchIndex) * 0.045,
+                kind: .project,
+                notes: branch.notes
+            ))
+            for (familyIndex, family) in branch.families.enumerated() {
+                let familyX = rootX + (Double(familyIndex) - 1) * 1.25
+                let nodeIndex = specifications.count
+                specifications.append(Specification(
+                    family.title,
+                    familyX,
+                    1.62,
+                    0.52 + Double((branchIndex * 11 + familyIndex * 7) % 25) / 100,
+                    rootIndex,
+                    kind: .group,
+                    notes: family.notes
+                ))
+                for (speciesIndex, species) in family.species.enumerated() {
+                    let speciesX = familyX + (Double(speciesIndex) - 1) * 0.38
+                    let speciesY = 0.22 - Double(speciesIndex) * 0.86
+                    let attentionSeed = (branchIndex * 31 + familyIndex * 17 + speciesIndex * 13) % 58
+                    let speciesAttention = 0.30 + Double(attentionSeed) / 100
+                    let specification = Specification(
+                        species,
+                        speciesX,
+                        speciesY,
+                        speciesAttention,
+                        nodeIndex,
+                        kind: .task
+                    )
+                    specifications.append(specification)
+                }
+            }
+        }
+        return makeMap(title: title, specifications: specifications)
+    }
+
+    private static let animalBranches: [TaxonomyBranch] = [
+        TaxonomyBranch(
+            title: "Mammals",
+            notes: "Warm-blooded vertebrates whose young are nourished with milk.",
+            families: [
+                TaxonomyFamily(title: "Felidae · cats", notes: "Specialist carnivores with retractile claws and highly developed senses.", species: ["Lion", "Tiger", "Snow leopard"]),
+                TaxonomyFamily(title: "Canidae · dogs", notes: "Social and solitary pursuit hunters found across most continents.", species: ["Grey wolf", "Red fox", "African wild dog"]),
+                TaxonomyFamily(title: "Ursidae · bears", notes: "Large plantigrade mammals ranging from Arctic ice to temperate forests.", species: ["Brown bear", "Polar bear", "Giant panda"])
+            ]
+        ),
+        TaxonomyBranch(
+            title: "Birds",
+            notes: "Feathered vertebrates whose living lineages occupy nearly every ecosystem.",
+            families: [
+                TaxonomyFamily(title: "Corvidae · crows", notes: "Adaptable, intelligent songbirds noted for problem solving and social learning.", species: ["Common raven", "Eurasian magpie", "Blue jay"]),
+                TaxonomyFamily(title: "Accipitridae · raptors", notes: "Eagles, hawks and kites with hooked bills and powerful talons.", species: ["Golden eagle", "Bald eagle", "Red kite"]),
+                TaxonomyFamily(title: "Spheniscidae · penguins", notes: "Flightless marine birds specialised for underwater pursuit.", species: ["Emperor penguin", "King penguin", "Adélie penguin"])
+            ]
+        ),
+        TaxonomyBranch(
+            title: "Reptiles",
+            notes: "Scaled amniotes represented here by snakes, chameleons and tortoises.",
+            families: [
+                TaxonomyFamily(title: "Pythonidae · pythons", notes: "Non-venomous constricting snakes native to Africa, Asia and Australia.", species: ["Ball python", "Burmese python", "Reticulated python"]),
+                TaxonomyFamily(title: "Chamaeleonidae", notes: "Arboreal lizards with independently mobile eyes and projectile tongues.", species: ["Veiled chameleon", "Panther chameleon", "Jackson’s chameleon"]),
+                TaxonomyFamily(title: "Testudinidae · tortoises", notes: "Land-dwelling turtles protected by high-domed shells.", species: ["Galápagos tortoise", "African spurred tortoise", "Leopard tortoise"])
+            ]
+        ),
+        TaxonomyBranch(
+            title: "Amphibians",
+            notes: "Ectothermic vertebrates whose life histories commonly bridge water and land.",
+            families: [
+                TaxonomyFamily(title: "Ranidae · true frogs", notes: "Long-legged frogs distributed through much of the world.", species: ["Common frog", "American bullfrog", "Wood frog"]),
+                TaxonomyFamily(title: "Salamandridae", notes: "Newts and true salamanders, many with striking warning colours.", species: ["Fire salamander", "Alpine newt", "Great crested newt"]),
+                TaxonomyFamily(title: "Dendrobatidae", notes: "Small Neotropical frogs, including vividly coloured poison-dart species.", species: ["Golden poison frog", "Dyeing dart frog", "Strawberry poison frog"])
+            ]
+        ),
+        TaxonomyBranch(
+            title: "Insects",
+            notes: "Six-legged arthropods represented by pollinators, butterflies and beetles.",
+            families: [
+                TaxonomyFamily(title: "Apidae · bees", notes: "Honey bees, bumblebees and carpenter bees; many are important pollinators.", species: ["Western honey bee", "Buff-tailed bumblebee", "Violet carpenter bee"]),
+                TaxonomyFamily(title: "Nymphalidae", notes: "The brush-footed butterflies, one of the largest butterfly families.", species: ["Monarch butterfly", "Painted lady", "Blue morpho"]),
+                TaxonomyFamily(title: "Lucanidae · stag beetles", notes: "Beetles whose males often bear enlarged, antler-like mandibles.", species: ["European stag beetle", "Rainbow stag beetle", "Giraffe stag beetle"])
+            ]
+        )
+    ]
+
+    private static let plantBranches: [TaxonomyBranch] = [
+        TaxonomyBranch(
+            title: "Rosids",
+            notes: "A major flowering-plant lineage containing roses, legumes, oaks and many crops.",
+            families: [
+                TaxonomyFamily(title: "Rosaceae · rose family", notes: "Trees, shrubs and herbs often bearing showy flowers and fleshy fruits.", species: ["Dog rose", "Domestic apple", "Wild strawberry"]),
+                TaxonomyFamily(title: "Fabaceae · legumes", notes: "The pea family; many members form nitrogen-fixing root partnerships.", species: ["Garden pea", "White clover", "Black locust"]),
+                TaxonomyFamily(title: "Fagaceae · beech family", notes: "Temperate and subtropical trees bearing nuts enclosed by cups or husks.", species: ["English oak", "European beech", "Sweet chestnut"])
+            ]
+        ),
+        TaxonomyBranch(
+            title: "Monocots",
+            notes: "Flowering plants typically recognised by one seed leaf and parallel leaf veins.",
+            families: [
+                TaxonomyFamily(title: "Orchidaceae · orchids", notes: "A vast family with intricate flowers and specialised pollination relationships.", species: ["Moth orchid", "Bee orchid", "Vanilla orchid"]),
+                TaxonomyFamily(title: "Poaceae · grasses", notes: "Ecologically dominant grasses including cereals and bamboos.", species: ["Bread wheat", "Golden bamboo", "Kentucky bluegrass"]),
+                TaxonomyFamily(title: "Liliaceae · lilies", notes: "Bulb-forming herbs with prominent tepals and mostly temperate distributions.", species: ["Garden tulip", "Madonna lily", "Snake’s-head fritillary"])
+            ]
+        ),
+        TaxonomyBranch(
+            title: "Asterids",
+            notes: "A large flowering-plant lineage rich in herbs, shrubs and familiar garden plants.",
+            families: [
+                TaxonomyFamily(title: "Asteraceae · daisies", notes: "Composite flower heads made from many small florets.", species: ["Common sunflower", "English daisy", "Common dandelion"]),
+                TaxonomyFamily(title: "Lamiaceae · mint family", notes: "Often aromatic plants with square stems and paired leaves.", species: ["English lavender", "Peppermint", "Rosemary"]),
+                TaxonomyFamily(title: "Solanaceae · nightshades", notes: "A diverse family containing major food crops and potent alkaloid producers.", species: ["Tomato", "Potato", "Deadly nightshade"])
+            ]
+        ),
+        TaxonomyBranch(
+            title: "Conifers",
+            notes: "Cone-bearing seed plants whose lineages include pines, redwoods and araucarias.",
+            families: [
+                TaxonomyFamily(title: "Pinaceae · pine family", notes: "Needle-leaved trees including pines, spruces, firs and cedars.", species: ["Scots pine", "Norway spruce", "Cedar of Lebanon"]),
+                TaxonomyFamily(title: "Cupressaceae · cypress family", notes: "Scale- or awl-leaved conifers including redwoods and junipers.", species: ["Giant sequoia", "Common juniper", "Lawson cypress"]),
+                TaxonomyFamily(title: "Araucariaceae", notes: "Ancient Southern Hemisphere conifers with distinctive broad or scale-like leaves.", species: ["Monkey puzzle", "Norfolk Island pine", "New Zealand kauri"])
+            ]
+        ),
+        TaxonomyBranch(
+            title: "Ferns & allies",
+            notes: "Spore-bearing vascular plants represented by ferns, horsetails and clubmosses.",
+            families: [
+                TaxonomyFamily(title: "Polypodiaceae", notes: "A widespread family of mostly epiphytic or rock-growing ferns.", species: ["Common polypody", "Resurrection fern", "Java fern"]),
+                TaxonomyFamily(title: "Equisetaceae · horsetails", notes: "Jointed, silica-rich plants from an ancient vascular lineage.", species: ["Field horsetail", "Giant horsetail", "Wood horsetail"]),
+                TaxonomyFamily(title: "Lycopodiaceae · clubmosses", notes: "Small evergreen vascular plants reproducing by spores.", species: ["Running ground-pine", "Fir clubmoss", "Alpine clubmoss"])
+            ]
+        )
+    ]
 
     private static func makeMap(
         title: String,

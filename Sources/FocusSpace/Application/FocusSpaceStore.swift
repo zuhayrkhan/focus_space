@@ -300,7 +300,11 @@ final class FocusSpaceStore: ObservableObject {
         selection = nil
         isFocusModeEnabled = false
         hoveredNodeID = nil
-        resetCamera(animated: true)
+        if scene == .animalFamilies || scene == .plantFamilies {
+            frameEntireMap()
+        } else {
+            resetCamera(animated: true)
+        }
         editingNodeID = nil
         undoMaps.removeAll()
         redoMaps.removeAll()

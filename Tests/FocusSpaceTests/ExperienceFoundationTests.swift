@@ -26,6 +26,27 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertFalse(DemoScene.deepHierarchy.map.nodes.first?.notes.isEmpty ?? true)
         XCTAssertEqual(DemoScene.largeMap.map.nodes.count, 180)
         XCTAssertGreaterThan(DemoScene.largeMap.map.nodes.filter { $0.parentID != nil }.count, 150)
+        for scene in [DemoScene.animalFamilies, .plantFamilies] {
+            let nodes = scene.map.nodes
+            XCTAssertEqual(nodes.count, 65)
+            XCTAssertEqual(nodes.filter { $0.kind == .project }.count, 5)
+            XCTAssertEqual(nodes.filter { $0.kind == .group }.count, 15)
+            XCTAssertEqual(nodes.filter { $0.kind == .task }.count, 45)
+            XCTAssertEqual(nodes.filter { $0.parentID == nil }.count, 5)
+            XCTAssertTrue(nodes.filter { $0.kind == .group }.allSatisfy { !$0.notes.isEmpty })
+        }
+    }
+
+    @MainActor
+    func testTaxonomyAtlasesOpenAsWholeMapOverviews() {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let store = FocusSpaceStore(repository: JSONFocusMapRepository(fileURL: folder.appending(path: "map.json")))
+
+        for scene in [DemoScene.animalFamilies, .plantFamilies] {
+            store.preview(scene)
+            XCTAssertEqual(store.cameraIntent.mode, .overview)
+            XCTAssertGreaterThan(store.cameraIntent.pose.distance, FocusCameraIntent.Pose.canonical.distance)
+        }
     }
 
     func testOptionalSoundEnvelopeStaysSubtleAndDecaysCleanly() {
