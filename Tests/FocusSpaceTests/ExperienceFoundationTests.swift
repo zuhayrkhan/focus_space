@@ -326,6 +326,38 @@ final class ExperienceFoundationTests: XCTestCase {
     }
 
     @MainActor
+    func testUnselectedBranchHasNoHaloAndTitleIsGeometricallyCentred() throws {
+        let renderer = RealityFocusRenderer(quality: .efficient)
+        let root = renderer.makeScene()
+        let id = UUID()
+        let item = FocusSceneSnapshot.Item(
+            id: id,
+            title: "Investigate spikes",
+            kind: .task,
+            position: .zero,
+            attention: 0.8,
+            parentID: nil,
+            hierarchyDepth: 0,
+            urgency: .none,
+            isEnabled: true,
+            isSelected: false,
+            isDimmed: false,
+            contextRole: .branch
+        )
+
+        renderer.reconcile(root: root, snapshot: FocusSceneSnapshot(items: [item]))
+
+        let entity = try XCTUnwrap(root.findEntity(named: "node-\(id.uuidString)"))
+        XCTAssertNil(entity.findEntity(named: "family-haze"))
+        XCTAssertNil(entity.findEntity(named: "selection-haze-inner"))
+        XCTAssertNil(entity.findEntity(named: "selection-haze-outer"))
+        let label = try XCTUnwrap(entity.findEntity(named: "node-label"))
+        let bounds = label.visualBounds(relativeTo: entity)
+        XCTAssertEqual(bounds.center.x, 0, accuracy: 0.001)
+        XCTAssertEqual(bounds.center.y, 0, accuracy: 0.001)
+    }
+
+    @MainActor
     func testRendererExpandsSelectedNodeToShowNotesAndHonoursShapePreference() throws {
         let renderer = RealityFocusRenderer(quality: .efficient)
         let root = renderer.makeScene()

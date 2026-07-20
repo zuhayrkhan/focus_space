@@ -473,13 +473,12 @@ final class RealityFocusRenderer {
             z: -0.018
         ))
 
-        let renderedTitle = showsNotes ? title : (title.contains("\n") ? title : "\n\(title)")
         let font = NSFont.systemFont(
             ofSize: 0.13 * CGFloat(textScale),
             weight: item.isSelected ? .semibold : .medium
         )
         let mesh = MeshResource.generateText(
-            renderedTitle,
+            title,
             extrusionDepth: 0.002,
             font: font,
             containerFrame: CGRect(
@@ -497,9 +496,10 @@ final class RealityFocusRenderer {
         let material = UnlitMaterial(color: NSColor(white: 0.98, alpha: labelAlpha))
         let label = ModelEntity(mesh: mesh, materials: [material])
         label.name = "node-label"
+        let labelBounds = label.visualBounds(relativeTo: label)
         label.position = SIMD3<Float>(
-            -style.width / 2 + 0.24,
-            showsNotes ? style.height / 2 - 0.38 : -style.height / 2 + 0.05,
+            -labelBounds.center.x,
+            showsNotes ? style.height / 2 - 0.38 : -labelBounds.center.y,
             0.083
         )
         decorations.addChild(label)
@@ -590,14 +590,14 @@ final class RealityFocusRenderer {
             ))
         }
 
-        if item.isHovered || item.contextRole == .branch {
+        if item.isHovered {
             decorations.addChild(makeSilhouetteLayer(
                 style: style,
-                expansion: item.isHovered ? 0.16 : 0.07,
+                expansion: 0.16,
                 depth: 0.012,
-                color: item.isHovered ? tokens.focusCore.nsColor : tokens.focusBlue.nsColor,
-                opacity: item.isHovered ? 0.18 : 0.08,
-                name: item.isHovered ? "hover-haze" : "family-haze",
+                color: tokens.focusCore.nsColor,
+                opacity: 0.18,
+                name: "hover-haze",
                 z: -0.09
             ))
         }
