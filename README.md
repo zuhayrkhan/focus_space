@@ -35,13 +35,13 @@ Profile the 180-thought release fixture with the efficient quality path:
 ./Scripts/run-app.sh --demo large --quality efficient --performance-hud
 ```
 
-Run the reproducible release gate or follow Developer ID notarisation instructions:
+Run the reproducible personal/internal release gate:
 
 ```sh
 ./Scripts/release-check.sh
 ```
 
-See [Release and notarisation](docs/release.md).
+See [Release scope and optional future notarisation](docs/release.md).
 
 The first launch creates a small example map. Changes autosave as readable JSON in
 `~/Library/Application Support/Focus Space/focus-space.json`.

@@ -1,6 +1,6 @@
 # Focus Space visual experience roadmap
 
-Status: Milestones 0–8 complete; Milestone 9 implemented and release-audited, with public notarisation awaiting release-owner credentials
+Status: Milestones 0–9 complete for the approved personal/internal distribution scope
 
 North star: the polished Focus Space concept supplied on 18 July 2026
 
@@ -210,7 +210,7 @@ Goal: turn a convincing prototype into something enjoyable to open every morning
 - Tune motion and sound as a unified system; keep sound subtle and optional.
 - Add empty-space, loading, failure, and first-map experiences.
 - Run repeated visual QA at standard window sizes and display scales.
-- Package, sign, notarise, and document the application.
+- Package and sign the application, document the release path, and notarise if a future public-distribution scope requires it.
 - Conduct a final pass that removes controls and effects which do not earn their visual weight.
 
 Definition of done:
