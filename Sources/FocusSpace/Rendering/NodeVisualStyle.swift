@@ -95,11 +95,17 @@ struct NodeVisualStyle: Equatable, Sendable {
 
 enum NodeNotesLayout {
     static func displayText(_ notes: String, maximumCharacters: Int = 150) -> String {
-        let normalized = notes
-            .split(whereSeparator: { $0.isWhitespace })
-            .joined(separator: " ")
+        let canonical = notes
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        var lines = canonical.components(separatedBy: "\n").map { line in
+            line.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        }
+        while lines.first?.isEmpty == true { lines.removeFirst() }
+        while lines.last?.isEmpty == true { lines.removeLast() }
+        let normalized = lines.joined(separator: "\n")
         guard normalized.count > maximumCharacters else { return normalized }
-        return String(normalized.prefix(maximumCharacters - 1)) + "…"
+        return String(normalized.prefix(max(maximumCharacters - 1, 0))) + "…"
     }
 }
 

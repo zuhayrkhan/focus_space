@@ -157,6 +157,14 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertGreaterThan(expanded.width, normal.width)
         XCTAssertGreaterThan(expanded.height, normal.height)
         XCTAssertTrue(NodeNotesLayout.displayText(String(repeating: "context ", count: 30)).hasSuffix("…"))
+        XCTAssertEqual(
+            NodeNotesLayout.displayText("First line\nSecond line"),
+            "First line\nSecond line"
+        )
+        XCTAssertEqual(
+            NodeNotesLayout.displayText("  First   line\r\n\r\nSecond line  "),
+            "First line\n\nSecond line"
+        )
     }
 
     func testLabelLayoutPreservesShortAndMultilingualTextAndTruncatesLongText() {

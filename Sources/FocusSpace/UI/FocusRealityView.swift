@@ -26,6 +26,7 @@ struct FocusRealityView: View {
     @State private var navigationStartedOnLegend = false
     @State private var canvasSize = CGSize.zero
     @GestureState private var legendDragOffset = CGSize.zero
+    @FocusState private var canvasFocused: Bool
 
     var body: some View {
         RealityView { content in
@@ -100,6 +101,18 @@ struct FocusRealityView: View {
             controlsTask?.cancel()
             idleReturnTask?.cancel()
         }
+        .focusable()
+        .focused($canvasFocused)
+        .focusEffectDisabled()
+        .onKeyPress(.return) {
+            guard let id = store.selection else { return .ignored }
+            store.beginRenaming(id)
+            return .handled
+        }
+        .onKeyPress(.tab) {
+            store.addChild(to: store.selection)
+            return .handled
+        }
         .accessibilityRepresentation {
             AccessibilitySpaceRepresentation(store: store)
         }
@@ -109,6 +122,7 @@ struct FocusRealityView: View {
         SpatialTapGesture(count: 1)
             .targetedToAnyEntity()
             .onEnded { value in
+                canvasFocused = true
                 store.select(nodeID(from: value.entity))
             }
     }
@@ -117,6 +131,7 @@ struct FocusRealityView: View {
         SpatialTapGesture(count: 2)
             .targetedToAnyEntity()
             .onEnded { value in
+                canvasFocused = true
                 if let id = nodeID(from: value.entity) { store.beginRenaming(id) }
             }
     }
@@ -124,6 +139,7 @@ struct FocusRealityView: View {
     private var emptySelectionGesture: some Gesture {
         SpatialTapGesture(count: 1)
             .onEnded { _ in
+                canvasFocused = true
                 store.hover(nil)
                 store.select(nil)
             }
@@ -133,6 +149,7 @@ struct FocusRealityView: View {
         DragGesture(minimumDistance: 2)
             .targetedToAnyEntity()
             .onChanged { value in
+                canvasFocused = true
                 guard let id = nodeID(from: value.entity), let node = store.map.node(id: id) else { return }
                 let origin = dragOrigins[id] ?? node.position
                 if dragOrigins[id] == nil {
@@ -222,6 +239,7 @@ struct FocusRealityView: View {
     private var navigationGesture: some Gesture {
         DragGesture(minimumDistance: 2)
             .onChanged { value in
+                canvasFocused = true
                 if cameraDragOrigin == nil,
                    legendCorner.contains(value.startLocation, in: canvasSize) {
                     navigationStartedOnLegend = true

@@ -129,16 +129,6 @@ struct ContentView: View {
         .sheet(isPresented: $persistenceDiagnosticsVisible) {
             PersistenceDiagnosticsView(store: store)
         }
-        .onKeyPress(.return) {
-            guard NSApp.keyWindow?.sheetParent == nil,
-                  let id = store.selection else { return .ignored }
-            store.beginRenaming(id)
-            return .handled
-        }
-        .onKeyPress(.tab) {
-            store.addChild(to: store.selection)
-            return .handled
-        }
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(60))
