@@ -5,6 +5,11 @@ struct ContentView: View {
     @AppStorage("universeGuideOpacity") private var universeGuideOpacity = 0.08
     @AppStorage("nodeShapePreference") private var nodeShapePreferenceRaw = NodeShapePreference.semantic.rawValue
     @AppStorage("inspectorVisible") private var inspectorVisible = true
+    @AppStorage("colourKeyVisible") private var colourKeyVisible = true
+    @AppStorage("hasCompletedSpatialGuide") private var hasCompletedSpatialGuide = false
+    @AppStorage("spatialLearningProgress") private var spatialLearningProgressRaw = 0
+    @State private var spatialGuideVisible = false
+    @State private var workspaceGuidesVisible = false
 
     var body: some View {
         NavigationSplitView {
@@ -14,6 +19,7 @@ struct ContentView: View {
                 FocusRealityView(
                     store: store,
                     universeGuideOpacity: $universeGuideOpacity,
+                    colourKeyVisible: $colourKeyVisible,
                     nodeShapePreference: NodeShapePreference(rawValue: nodeShapePreferenceRaw) ?? .semantic
                 )
                 if inspectorVisible {
@@ -23,6 +29,7 @@ struct ContentView: View {
                 }
             }
             .overlay(alignment: .top) { searchField }
+            .overlay(alignment: .bottomLeading) { contextualHint }
         }
         .navigationTitle(store.map.title)
         .toolbar { toolbar }
@@ -33,6 +40,22 @@ struct ContentView: View {
             Button("OK") {}
         } message: {
             Text(store.persistenceMessage ?? "")
+        }
+        .sheet(isPresented: $spatialGuideVisible) {
+            SpatialGuideView {
+                hasCompletedSpatialGuide = true
+                spatialGuideVisible = false
+            }
+            .interactiveDismissDisabled()
+        }
+        .onAppear {
+            if !hasCompletedSpatialGuide { spatialGuideVisible = true }
+        }
+        .onChange(of: store.interactionRevision) { _, _ in
+            guard let interaction = store.latestInteraction else { return }
+            var progress = SpatialLearningProgress(rawValue: spatialLearningProgressRaw)
+            progress.record(interaction)
+            spatialLearningProgressRaw = progress.rawValue
         }
         .onKeyPress(.return) {
             guard let id = store.selection else { return .ignored }
@@ -157,9 +180,34 @@ struct ContentView: View {
             Button("Arrange mind map", systemImage: "wand.and.stars") { store.arrangeMindMap() }
                 .disabled(!store.canArrange)
             Button("Search", systemImage: "magnifyingglass") {
-                withAnimation(.spring(response: 0.35)) { store.isSearching.toggle() }
+                withAnimation(.spring(response: 0.35)) {
+                    if store.isSearching {
+                        store.updateSearchText("")
+                        store.isSearching = false
+                    } else {
+                        store.isSearching = true
+                    }
+                }
+            }
+            Button("Workspace guides", systemImage: "rectangle.3.group") {
+                workspaceGuidesVisible.toggle()
+            }
+            .popover(isPresented: $workspaceGuidesVisible, arrowEdge: .top) {
+                WorkspaceGuidesView(
+                    store: store,
+                    colourKeyVisible: $colourKeyVisible
+                )
+            }
+            Button("Spatial guide", systemImage: "questionmark.circle") {
+                spatialGuideVisible = true
             }
             if let id = store.selection {
+                Button(
+                    store.isFocusModeEnabled ? "Show all branches" : "Focus selected branch",
+                    systemImage: store.isFocusModeEnabled ? "eye" : "scope"
+                ) {
+                    withAnimation(.easeInOut(duration: 0.25)) { store.toggleFocusMode() }
+                }
                 Button("Pull forward", systemImage: "arrow.up.to.line") { store.shiftAttention(id, by: 0.12) }
                 Button("Push back", systemImage: "arrow.down.to.line") { store.shiftAttention(id, by: -0.12) }
             }
@@ -176,8 +224,31 @@ struct ContentView: View {
     @ViewBuilder
     private var searchField: some View {
         if store.isSearching {
-            TextField("Find a thought", text: $store.searchText)
-                .textFieldStyle(.plain)
+            HStack(spacing: 9) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Find a thought", text: Binding(
+                    get: { store.searchText },
+                    set: store.updateSearchText
+                ))
+                    .textFieldStyle(.plain)
+                if !store.searchText.isEmpty {
+                    Text("\(store.searchResultCount)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    Button("Clear", systemImage: "xmark.circle.fill") {
+                        store.updateSearchText("")
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.plain)
+                }
+                Button("Done") {
+                    store.updateSearchText("")
+                    store.isSearching = false
+                }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+            }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .frame(width: 320)
@@ -185,6 +256,21 @@ struct ContentView: View {
                 .shadow(radius: 20)
                 .padding(.top, 12)
                 .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+
+    @ViewBuilder
+    private var contextualHint: some View {
+        if hasCompletedSpatialGuide,
+           let hint = SpatialLearningProgress(rawValue: spatialLearningProgressRaw).nextHint {
+            Label(hint, systemImage: "sparkles")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(.ultraThinMaterial, in: .capsule)
+                .padding(14)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
 

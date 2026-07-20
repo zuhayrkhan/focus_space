@@ -4,6 +4,7 @@ import SwiftUI
 struct FocusRealityView: View {
     @ObservedObject var store: FocusSpaceStore
     @Binding var universeGuideOpacity: Double
+    @Binding var colourKeyVisible: Bool
     let nodeShapePreference: NodeShapePreference
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("nodeLegendCorner") private var legendCornerRaw = LegendCorner.topTrailing.rawValue
@@ -65,13 +66,9 @@ struct FocusRealityView: View {
             }
         }
         .background(WorkspaceBackground())
-        .overlay(alignment: .bottomLeading) {
-            Text("Drag nodes to arrange · drag empty space to move the universe · ⌘0 resets")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(14)
+        .overlay(alignment: legendCorner.alignment) {
+            if colourKeyVisible { nodeLegend }
         }
-        .overlay(alignment: legendCorner.alignment) { nodeLegend }
         .overlay(alignment: .trailing) {
             if let depthDragSession {
                 DepthGuideView(
@@ -606,7 +603,7 @@ private enum LegendCorner: String {
     }
 }
 
-private struct WorkspaceBackground: View {
+struct WorkspaceBackground: View {
     private let tokens = FocusVisualTokens.midnight
 
     var body: some View {

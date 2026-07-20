@@ -1,6 +1,6 @@
 # Focus Space visual experience roadmap
 
-Status: Milestones 0–6 complete; Milestone 7 next
+Status: Milestones 0–7 complete; Milestone 8 next
 
 North star: the polished Focus Space concept supplied on 18 July 2026
 
@@ -165,6 +165,8 @@ Definition of done:
 - Opening an older JSON map produces no unexpected movement until the user enables gravity.
 
 ## Milestone 7 — Progressive disclosure and onboarding
+
+Status: complete on 20 July 2026
 
 Goal: teach the spatial grammar without leaving the instructional concept board permanently on screen.
 

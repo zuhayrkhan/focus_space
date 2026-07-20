@@ -6,6 +6,7 @@ struct FocusCameraIntent: Equatable, Sendable {
         case free
         case overview
         case framed(UUID)
+        case search
     }
 
     struct Pose: Equatable, Sendable {

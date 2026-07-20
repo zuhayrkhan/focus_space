@@ -15,12 +15,15 @@ final class FocusSpaceStore: ObservableObject {
     @Published var filter: Filter = .today
     @Published var searchText = ""
     @Published var isSearching = false
+    @Published var isFocusModeEnabled = false
     @Published var editingNodeID: UUID?
     @Published private(set) var hoveredNodeID: UUID?
     @Published private(set) var cameraIntent: FocusCameraIntent = .canonical
     @Published private(set) var demoScene: DemoScene?
     @Published private(set) var persistenceMessage: String?
     @Published private(set) var gravityEvaluationDate: Date
+    @Published private(set) var latestInteraction: WorkspaceInteraction?
+    @Published private(set) var interactionRevision = 0
 
     private let repository: any FocusMapRepository
     private let nowProvider: () -> Date
@@ -68,7 +71,11 @@ final class FocusSpaceStore: ObservableObject {
             case .all: true
             case .parked: node.attention < 0.42
             }
-            let includedBySearch = query.isEmpty || node.title.localizedCaseInsensitiveContains(query)
+            let includedBySearch = query.isEmpty
+                || node.title.localizedCaseInsensitiveContains(query)
+                || node.notes.localizedCaseInsensitiveContains(query)
+            let includedByFocus = !isFocusModeEnabled || contextIDs.contains(node.id)
+            let excludedByViewFilter = query.isEmpty && !includedByFilter
             return FocusSceneSnapshot.Item(
                 id: node.id,
                 title: node.title,
@@ -84,7 +91,7 @@ final class FocusSpaceStore: ObservableObject {
                 urgency: strongestUrgency(node.urgency, gravity.urgency),
                 isEnabled: node.isEnabled,
                 isSelected: selection == node.id,
-                isDimmed: !includedByFilter || !includedBySearch,
+                isDimmed: excludedByViewFilter || !includedBySearch || !includedByFocus,
                 isHovered: hoveredNodeID == node.id,
                 contextRole: contextRole(
                     for: node.id,
@@ -108,6 +115,8 @@ final class FocusSpaceStore: ObservableObject {
     func select(_ id: UUID?) {
         let selectionChanged = selection != id
         withAnimationIntent { selection = id }
+        if id != nil { recordInteraction(.selectedThought) }
+        if id == nil { isFocusModeEnabled = false }
         guard selectionChanged, let id, !map.descendants(of: id).isEmpty else { return }
         frameBranch(id)
     }
@@ -127,10 +136,12 @@ final class FocusSpaceStore: ObservableObject {
         pose.target.x -= horizontal * scale
         pose.target.y += vertical * scale
         setCameraPose(pose)
+        recordInteraction(.navigatedUniverse)
     }
 
     func orbitCamera(horizontal: Double, vertical: Double, from origin: FocusCameraIntent.Pose? = nil) {
         setCameraPose(orbitCameraPose(horizontal: horizontal, vertical: vertical, from: origin))
+        recordInteraction(.navigatedUniverse)
     }
 
     func orbitCameraPose(
@@ -146,6 +157,7 @@ final class FocusSpaceStore: ObservableObject {
 
     func zoomCamera(by factor: Double, from origin: FocusCameraIntent.Pose? = nil, animated: Bool = false) {
         setCameraPose(zoomCameraPose(by: factor, from: origin), animated: animated)
+        recordInteraction(.navigatedUniverse)
     }
 
     func zoomCameraPose(
@@ -193,6 +205,34 @@ final class FocusSpaceStore: ObservableObject {
         )
     }
 
+    func updateSearchText(_ text: String) {
+        searchText = text
+        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+        let matches = map.nodes.filter {
+            $0.title.localizedCaseInsensitiveContains(query)
+                || $0.notes.localizedCaseInsensitiveContains(query)
+        }
+        frameNodes(matches, mode: .search)
+    }
+
+    var searchResultCount: Int {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return 0 }
+        return map.nodes.count {
+            $0.title.localizedCaseInsensitiveContains(query)
+                || $0.notes.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    func toggleFocusMode() {
+        guard selection != nil else {
+            isFocusModeEnabled = false
+            return
+        }
+        isFocusModeEnabled.toggle()
+    }
+
     func resetCamera(animated: Bool = true) {
         cameraIntent = FocusCameraIntent(
             pose: .canonical,
@@ -218,6 +258,7 @@ final class FocusSpaceStore: ObservableObject {
             self.personalMapBeforeDemo = nil
         }
         selection = nil
+        isFocusModeEnabled = false
         hoveredNodeID = nil
         resetCamera(animated: true)
         editingNodeID = nil
@@ -254,6 +295,7 @@ final class FocusSpaceStore: ObservableObject {
         mutate(recordingUndo: !isInteracting) {
             $0.updateNode(id: id) { $0.setAttention(attention, manualOverrideAt: now) }
         }
+        recordInteraction(.changedDepth)
     }
 
     func setBranchAttention(
@@ -271,6 +313,7 @@ final class FocusSpaceStore: ObservableObject {
                 map.updateNode(id: id) { $0.setAttention(original + delta, manualOverrideAt: now) }
             }
         }
+        recordInteraction(.changedDepth)
     }
 
     func shiftAttention(_ id: UUID, by delta: Double) {
@@ -307,6 +350,29 @@ final class FocusSpaceStore: ObservableObject {
         cameraIntent = FocusCameraIntent(
             pose: pose,
             mode: .overview,
+            revision: cameraIntent.revision + 1,
+            isAnimated: true
+        )
+    }
+
+    private func frameNodes(_ nodes: [FocusNode], mode: FocusCameraIntent.Mode) {
+        guard !nodes.isEmpty else { return }
+        let minX = nodes.map(\.position.x).min() ?? 0
+        let maxX = nodes.map(\.position.x).max() ?? 0
+        let minY = nodes.map(\.position.y).min() ?? 0
+        let maxY = nodes.map(\.position.y).max() ?? 0
+        let attention = nodes.map(\.attention).reduce(0, +) / Double(nodes.count)
+        let span = max(maxX - minX, (maxY - minY) * 1.6)
+        let pose = FocusCameraIntent.Pose(
+            target: SpatialPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2),
+            targetAttention: attention,
+            yaw: cameraIntent.pose.yaw,
+            pitch: cameraIntent.pose.pitch,
+            distance: min(max(5.2 + span * 0.72, 5.4), 14)
+        ).bounded()
+        cameraIntent = FocusCameraIntent(
+            pose: pose,
+            mode: mode,
             revision: cameraIntent.revision + 1,
             isAnimated: true
         )
@@ -458,6 +524,7 @@ final class FocusSpaceStore: ObservableObject {
     func delete(_ id: UUID) {
         mutate { $0.removeNodeAndDescendants(id: id) }
         selection = nil
+        isFocusModeEnabled = false
     }
 
     func undo() {
@@ -506,7 +573,10 @@ final class FocusSpaceStore: ObservableObject {
     }
 
     private func validateSelection() {
-        if let selection, map.node(id: selection) == nil { self.selection = nil }
+        if let selection, map.node(id: selection) == nil {
+            self.selection = nil
+            isFocusModeEnabled = false
+        }
     }
 
     private func setTemporalSignal(
@@ -527,6 +597,11 @@ final class FocusSpaceStore: ObservableObject {
     ) -> FocusNodeUrgency {
         let rank: [FocusNodeUrgency: Int] = [.none: 0, .soon: 1, .overdue: 2]
         return (rank[computed] ?? 0) > (rank[manual] ?? 0) ? computed : manual
+    }
+
+    private func recordInteraction(_ interaction: WorkspaceInteraction) {
+        latestInteraction = interaction
+        interactionRevision += 1
     }
 
     private func hierarchyDepth(of node: FocusNode) -> Int {
