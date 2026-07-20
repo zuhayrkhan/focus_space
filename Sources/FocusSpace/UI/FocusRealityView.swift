@@ -17,6 +17,7 @@ struct FocusRealityView: View {
     @State private var depthDragSession: DepthDragSession?
     @State private var cameraDragOrigin: FocusCameraIntent.Pose?
     @State private var magnifyOrigin: FocusCameraIntent.Pose?
+    @State private var trackpadPanOrigin: FocusCameraIntent.Pose?
     @State private var rotationOrigin: FocusCameraIntent.Pose?
     @State private var controlsVisible = true
     @State private var controlsTask: Task<Void, Never>?
@@ -48,7 +49,11 @@ struct FocusRealityView: View {
                 onBegan: beginMagnification,
                 onChanged: updateMagnification,
                 onEnded: endMagnification,
-                onCancelled: cancelMagnification
+                onCancelled: cancelMagnification,
+                onPanBegan: beginTrackpadPan,
+                onPanChanged: updateTrackpadPan,
+                onPanEnded: endTrackpadPan,
+                onPanCancelled: cancelTrackpadPan
             )
         }
         .gesture(selectionGesture.exclusively(before: emptySelectionGesture))
@@ -283,6 +288,44 @@ struct FocusRealityView: View {
         noteNavigationActivity()
     }
 
+    private func beginTrackpadPan() {
+        trackpadPanOrigin = store.cameraIntent.pose
+        noteNavigationActivity(scheduleIdleReturn: false)
+    }
+
+    private func updateTrackpadPan(translation: CGSize) {
+        let origin = trackpadPanOrigin ?? store.cameraIntent.pose
+        if trackpadPanOrigin == nil { beginTrackpadPan() }
+        renderer.previewCamera(
+            pose: store.panCameraPose(
+                horizontal: translation.width,
+                vertical: translation.height,
+                from: origin
+            ),
+            reduceMotion: reduceMotion
+        )
+    }
+
+    private func endTrackpadPan(translation: CGSize) {
+        if let origin = trackpadPanOrigin {
+            store.panCamera(
+                horizontal: translation.width,
+                vertical: translation.height,
+                from: origin
+            )
+        }
+        trackpadPanOrigin = nil
+        noteNavigationActivity()
+    }
+
+    private func cancelTrackpadPan() {
+        if let origin = trackpadPanOrigin {
+            renderer.previewCamera(pose: origin, reduceMotion: reduceMotion)
+        }
+        trackpadPanOrigin = nil
+        noteNavigationActivity()
+    }
+
     private var rotationGesture: some Gesture {
         RotateGesture(minimumAngleDelta: .degrees(1))
             .onChanged { value in
@@ -327,6 +370,7 @@ struct FocusRealityView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 6)
+                .help("Drag to orbit; use two fingers on the trackpad to pan")
             Divider().frame(height: 22)
             Button("Zoom out", systemImage: "minus.magnifyingglass") {
                 store.zoomCamera(by: 0.84, animated: true)

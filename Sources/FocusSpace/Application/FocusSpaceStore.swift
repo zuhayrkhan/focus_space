@@ -143,12 +143,20 @@ final class FocusSpaceStore: ObservableObject {
     }
 
     func panCamera(horizontal: Double, vertical: Double, from origin: FocusCameraIntent.Pose? = nil) {
+        setCameraPose(panCameraPose(horizontal: horizontal, vertical: vertical, from: origin))
+        recordInteraction(.navigatedUniverse)
+    }
+
+    func panCameraPose(
+        horizontal: Double,
+        vertical: Double,
+        from origin: FocusCameraIntent.Pose? = nil
+    ) -> FocusCameraIntent.Pose {
         var pose = origin ?? cameraIntent.pose
         let scale = pose.distance / 520
         pose.target.x -= horizontal * scale
         pose.target.y += vertical * scale
-        setCameraPose(pose)
-        recordInteraction(.navigatedUniverse)
+        return pose.bounded()
     }
 
     func orbitCamera(horizontal: Double, vertical: Double, from origin: FocusCameraIntent.Pose? = nil) {

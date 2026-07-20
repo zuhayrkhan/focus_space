@@ -740,6 +740,30 @@ final class ExperienceFoundationTests: XCTestCase {
     }
 
     @MainActor
+    func testTrackpadPanUsesOneStableOriginAndPreservesCameraAngle() {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let store = FocusSpaceStore(repository: JSONFocusMapRepository(fileURL: folder.appending(path: "map.json")))
+        var origin = FocusCameraIntent.Pose.canonical
+        origin.distance = 10
+        origin.yaw = 24
+        origin.pitch = -12
+
+        let preview = store.panCameraPose(horizontal: 52, vertical: -26, from: origin)
+
+        XCTAssertEqual(preview.target.x, origin.target.x - 1, accuracy: 0.001)
+        XCTAssertEqual(preview.target.y, origin.target.y - 0.5, accuracy: 0.001)
+        XCTAssertEqual(preview.yaw, origin.yaw)
+        XCTAssertEqual(preview.pitch, origin.pitch)
+        XCTAssertEqual(preview.distance, origin.distance)
+        XCTAssertEqual(store.cameraIntent.pose, .canonical, "A live trackpad preview must not publish intermediate camera state")
+
+        store.panCamera(horizontal: 52, vertical: -26, from: origin)
+
+        XCTAssertEqual(store.cameraIntent.pose, preview)
+        XCTAssertEqual(store.cameraIntent.mode, .free)
+    }
+
+    @MainActor
     func testUniverseDragIsDirectResponsiveAndUsesBothAxes() {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         let store = FocusSpaceStore(repository: JSONFocusMapRepository(fileURL: folder.appending(path: "map.json")))

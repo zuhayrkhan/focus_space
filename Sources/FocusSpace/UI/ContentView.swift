@@ -130,7 +130,8 @@ struct ContentView: View {
             PersistenceDiagnosticsView(store: store)
         }
         .onKeyPress(.return) {
-            guard let id = store.selection else { return .ignored }
+            guard NSApp.keyWindow?.sheetParent == nil,
+                  let id = store.selection else { return .ignored }
             store.beginRenaming(id)
             return .handled
         }
@@ -412,6 +413,7 @@ struct ContentView: View {
 private struct RenameView: View {
     let node: FocusNode
     let commit: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
     @State private var title: String
     @FocusState private var focused: Bool
 
@@ -427,15 +429,20 @@ private struct RenameView: View {
             TextField("Name", text: $title)
                 .textFieldStyle(.roundedBorder)
                 .focused($focused)
-                .onSubmit { commit(title) }
+                .onSubmit { completeRename() }
             HStack {
                 Spacer()
-                Button("Done") { commit(title) }
+                Button("Done", action: completeRename)
                     .keyboardShortcut(.defaultAction)
             }
         }
         .padding(24)
         .frame(width: 380)
         .onAppear { focused = true }
+    }
+
+    private func completeRename() {
+        commit(title)
+        dismiss()
     }
 }
