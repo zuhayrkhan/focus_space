@@ -34,6 +34,13 @@ struct FocusSpaceApp: App {
         }
         .defaultSize(width: windowSize.width, height: windowSize.height)
         .commands {
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit Focus Space") {
+                    store.saveImmediately()
+                    NSApplication.shared.terminate(nil)
+                }
+                .keyboardShortcut("q", modifiers: .command)
+            }
             CommandGroup(replacing: .undoRedo) {
                 Button("Undo", action: store.undo)
                     .keyboardShortcut("z", modifiers: .command)
