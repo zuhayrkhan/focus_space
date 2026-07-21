@@ -101,8 +101,17 @@ Introduce renderer-independent presentation levels driven by camera distance and
 2. **Branch** — show the root, first-level branches, and compact summaries for deeper descendants.
 3. **Detail** — show the current full cards, labels, notes expansion, badges, and direct manipulation.
 
+Within Branch and Detail views, use focus-relative levels of detail rather than one fixed generation cut-off:
+
+- the focused node and its immediate children normally remain full-size cards
+- descendants two generations away become smaller, compact shapes with short labels
+- descendants three or more generations away remain visible as still smaller semantic silhouettes, with labels revealed when space permits
+- selecting, framing, or zooming into a descendant promotes it and its nearby family smoothly through those levels until they reach normal card size
+
+The generation counts are defaults, not hard boundaries. Available screen space, projected card size, branch density, selection, urgency, and accessibility settings may keep a node at a richer level for longer. A card should compact before its title becomes illegible, and compact nodes should retain generous invisible hit targets rather than becoming difficult to select.
+
 - Add an island navigator derived from the domain graph, not RealityKit entities. Selecting an island frames it without changing attention.
-- Use smooth cross-fades and shape-preserving transitions between presentation levels.
+- Use smooth scale, label, and material transitions between presentation levels so descendants appear to come into focus rather than being replaced.
 - Keep selected paths and urgent items discoverable at every level.
 - Do not create a separate miniature universe that duplicates the same unreadability. The navigator should be a concise list, constellation of roots, or search-driven switcher.
 - Define what Option-drag means at Atlas level: translate the island summary and commit the same delta to its connected component.
@@ -112,6 +121,8 @@ Definition of done:
 - The 180-thought fixture opens to a readable atlas rather than a wall of cards.
 - Every root is reachable in two actions or fewer.
 - No full card is rendered at a scale where its title is illegible.
+- A three- or four-generation branch remains structurally readable from its ancestor without giving every descendant equal visual weight.
+- Traversing down that branch promotes the new local family to normal card size without a pop or camera jump.
 - Zooming into one island reveals the accepted bilateral layout without a visual jump.
 
 ## Milestone U4 — Adaptive workspace chrome
