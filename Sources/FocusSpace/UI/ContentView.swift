@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var importInProgress = false
     @StateObject private var performanceMonitor = ReleasePerformanceMonitor()
     @StateObject private var soundPlayer = FocusSoundPlayer()
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         NavigationSplitView {
@@ -33,7 +34,8 @@ struct ContentView: View {
                         store: store,
                         universeGuideOpacity: $universeGuideOpacity,
                         colourKeyVisible: $colourKeyVisible,
-                        nodeShapePreference: NodeShapePreference(rawValue: nodeShapePreferenceRaw) ?? .semantic
+                        nodeShapePreference: NodeShapePreference(rawValue: nodeShapePreferenceRaw) ?? .semantic,
+                        onCanvasInteraction: { workspaceGuidesVisible = false }
                     )
                 }
                 if inspectorVisible {
@@ -43,7 +45,8 @@ struct ContentView: View {
                 }
             }
             .overlay(alignment: .top) { searchField }
-            .overlay(alignment: .bottomLeading) { contextualHint }
+            .overlay(alignment: .topLeading) { viewContextBar }
+            .overlay(alignment: .bottomLeading) { bottomMessages }
             .overlay { workspaceStateOverlay }
             .overlay(alignment: .topLeading) {
                 if showsPerformanceHUD {
@@ -67,11 +70,13 @@ struct ContentView: View {
             Text(store.persistenceMessage ?? "")
         }
         .sheet(isPresented: $spatialGuideVisible) {
-            SpatialGuideView {
-                hasCompletedSpatialGuide = true
-                spatialGuideVisible = false
-            }
-            .interactiveDismissDisabled()
+            SpatialGuideView(
+                finish: {
+                    hasCompletedSpatialGuide = true
+                    spatialGuideVisible = false
+                },
+                dismiss: { spatialGuideVisible = false }
+            )
         }
         .onAppear {
             if !hasCompletedSpatialGuide { spatialGuideVisible = true }
@@ -87,6 +92,20 @@ struct ContentView: View {
                 case .changedDepth: soundPlayer.play(.depth)
                 case .navigatedUniverse: break
                 }
+            }
+        }
+        .onChange(of: store.selection) { _, _ in
+            workspaceGuidesVisible = false
+        }
+        .onChange(of: store.isSearching) { _, searching in
+            if searching {
+                workspaceGuidesVisible = false
+                Task { @MainActor in
+                    await Task.yield()
+                    searchFocused = true
+                }
+            } else {
+                searchFocused = false
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -136,6 +155,7 @@ struct ContentView: View {
                 store.refreshGravity()
             }
         }
+        .onExitCommand { _ = dismissTransientUI() }
     }
 
     private var sidebar: some View {
@@ -147,15 +167,28 @@ struct ContentView: View {
                 .padding(.top, 10)
             ForEach(FocusSpaceStore.Filter.allCases) { filter in
                 Button {
-                    withAnimation(FocusMotion.calmSpring) { store.filter = filter }
+                    withAnimation(FocusMotion.calmSpring) { store.setFilter(filter) }
                 } label: {
-                    Label(filter.rawValue, systemImage: icon(for: filter))
+                    HStack {
+                        Label(filter.rawValue, systemImage: icon(for: filter))
+                        Spacer()
+                        Text("\(store.filterCount(for: filter))")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 7)
                         .padding(.horizontal, 10)
                         .background(store.filter == filter ? Color.accentColor.opacity(0.17) : .clear, in: .rect(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
+            }
+            if store.hiddenNodeCount > 0 {
+                Text(hiddenThoughtsSummary)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .accessibilityLabel("\(hiddenThoughtsSummary) filter")
             }
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
@@ -241,14 +274,18 @@ struct ContentView: View {
             Button("Search", systemImage: "magnifyingglass") {
                 withAnimation(.spring(response: 0.35)) {
                     if store.isSearching {
-                        store.updateSearchText("")
-                        store.isSearching = false
+                        store.cancelSearch()
                     } else {
-                        store.isSearching = true
+                        workspaceGuidesVisible = false
+                        store.beginSearch()
                     }
                 }
             }
             Button("Workspace guides", systemImage: "rectangle.3.group") {
+                if !workspaceGuidesVisible {
+                    store.cancelSearch()
+                    spatialGuideVisible = false
+                }
                 workspaceGuidesVisible.toggle()
             }
             .popover(isPresented: $workspaceGuidesVisible, arrowEdge: .top) {
@@ -260,6 +297,8 @@ struct ContentView: View {
                 )
             }
             Button("Spatial guide", systemImage: "questionmark.circle") {
+                workspaceGuidesVisible = false
+                store.cancelSearch()
                 spatialGuideVisible = true
             }
             Menu("Space file", systemImage: "externaldrive") {
@@ -308,31 +347,94 @@ struct ContentView: View {
                     set: store.updateSearchText
                 ))
                     .textFieldStyle(.plain)
+                    .focused($searchFocused)
+                    .onSubmit { store.commitSearchResult() }
+                    .onKeyPress(.upArrow) {
+                        store.selectSearchResult(by: -1)
+                        return .handled
+                    }
+                    .onKeyPress(.downArrow) {
+                        store.selectSearchResult(by: 1)
+                        return .handled
+                    }
                 if !store.searchText.isEmpty {
-                    Text("\(store.searchResultCount)")
+                    Text(searchResultSummary)
                         .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(store.searchResultCount == 0 ? .orange : .secondary)
+                    if store.searchResultCount > 1 {
+                        Button("Previous result", systemImage: "chevron.up") {
+                            store.selectSearchResult(by: -1)
+                        }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.plain)
+                        Button("Next result", systemImage: "chevron.down") {
+                            store.selectSearchResult(by: 1)
+                        }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.plain)
+                    }
                     Button("Clear", systemImage: "xmark.circle.fill") {
-                        store.updateSearchText("")
+                        store.clearSearchQuery()
                     }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.plain)
                 }
-                Button("Done") {
-                    store.updateSearchText("")
-                    store.isSearching = false
-                }
+                Button("Cancel") { store.cancelSearch() }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
             }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .frame(width: 320)
+                .frame(width: 430)
                 .background(.ultraThinMaterial, in: .rect(cornerRadius: 12))
                 .shadow(radius: 20)
                 .padding(.top, 12)
                 .transition(.move(edge: .top).combined(with: .opacity))
         }
+    }
+
+    @ViewBuilder
+    private var viewContextBar: some View {
+        if let title = store.viewContextTitle, !store.isSearching {
+            HStack(spacing: 8) {
+                Label(title, systemImage: "scope")
+                    .lineLimit(1)
+                Divider().frame(height: 14)
+                Button(store.viewContextReturnTitle) { store.returnFromViewContext() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.cyan)
+            }
+            .font(.caption.weight(.medium))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial, in: .capsule)
+            .padding(12)
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+
+    @ViewBuilder
+    private var bottomMessages: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let notice = store.visibilityNotice {
+                HStack(spacing: 10) {
+                    Label(notice.message, systemImage: "eye.slash")
+                    Button("Show Everything") { store.showAllThoughts() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    Button("Dismiss", systemImage: "xmark") { store.dismissVisibilityNotice() }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.plain)
+                }
+                .font(.caption)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(.ultraThinMaterial, in: .capsule)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            contextualHint
+        }
+        .padding(14)
     }
 
     @ViewBuilder
@@ -385,6 +487,40 @@ struct ContentView: View {
 
     private var usesListFallback: Bool {
         WorkspaceRendererAvailability.usesListFallback(preference: preferAccessibleList)
+    }
+
+    private var searchResultSummary: String {
+        guard store.searchResultCount > 0 else { return "No matches" }
+        guard let position = store.searchResultPosition else {
+            return "\(store.searchResultCount) matches"
+        }
+        return "\(position) of \(store.searchResultCount)"
+    }
+
+    private var hiddenThoughtsSummary: String {
+        let noun = store.hiddenNodeCount == 1 ? "thought" : "thoughts"
+        return "\(store.hiddenNodeCount) \(noun) hidden by \(store.filter.rawValue)"
+    }
+
+    @discardableResult
+    private func dismissTransientUI() -> Bool {
+        if spatialGuideVisible {
+            spatialGuideVisible = false
+            return true
+        }
+        if workspaceGuidesVisible {
+            workspaceGuidesVisible = false
+            return true
+        }
+        if store.isSearching {
+            store.cancelSearch()
+            return true
+        }
+        if store.selection != nil {
+            store.select(nil)
+            return true
+        }
+        return false
     }
 
     private var showsPerformanceHUD: Bool {

@@ -1,6 +1,6 @@
 # Focus Space usability follow-up roadmap
 
-Status: proposed after hands-on review on 21 July 2026
+Status: U1 and U2 completed on 21 July 2026; U3 awaits hands-on review
 
 Scope: usability refinement only. Preserve the accepted bilateral arrangement, semantic colours, shapes, relationship curves, selection haze, and Z-as-attention model.
 
@@ -61,6 +61,8 @@ The menu bar currently exposes two **View** menus because the app adds a custom 
 
 Priority: first; small surface area and high confidence.
 
+Completion: implemented and verified on 21 July 2026. Search now owns a reversible session containing its prior selection, camera, and navigation context. The active result drives selection, card emphasis, camera, and inspector; arrow keys traverse, Return commits, Clear restores the search origin, and Cancel or Escape restores and closes. The guide has independent Close and completion actions, while canvas and transient-surface interactions dismiss workspace guides predictably.
+
 - Model search focus explicitly instead of moving only the camera.
 - A single match becomes the active search result and drives the inspector; multiple matches support next/previous traversal and Return to select.
 - Closing search restores the prior selection and camera unless the user commits a result.
@@ -78,6 +80,8 @@ Definition of done:
 ## Milestone U2 — Honest visibility and orientation
 
 Priority: second; prevents users mistaking filtering for data loss.
+
+Completion: implemented and verified on 21 July 2026. Every filter reports its count and the active filter reports the hidden total. Arrange discloses filtered content with a direct **Show Everything** action, while dimmed relationship paths retain structural continuity. Framed and committed-search contexts expose a return breadcrumb, and the reset control and `Command-0` now explicitly restore the canonical universe.
 
 - Add visible counts to **Near me**, **Everything**, and **Parked**, including a quiet `n hidden` indication when the current filter excludes thoughts.
 - After Arrange, show a temporary explanation when nodes are outside the active depth filter, with one action to reveal Everything.

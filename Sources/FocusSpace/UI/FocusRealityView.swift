@@ -6,6 +6,7 @@ struct FocusRealityView: View {
     @Binding var universeGuideOpacity: Double
     @Binding var colourKeyVisible: Bool
     let nodeShapePreference: NodeShapePreference
+    let onCanvasInteraction: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
@@ -123,6 +124,7 @@ struct FocusRealityView: View {
             .targetedToAnyEntity()
             .onEnded { value in
                 canvasFocused = true
+                onCanvasInteraction()
                 store.select(nodeID(from: value.entity))
             }
     }
@@ -140,6 +142,7 @@ struct FocusRealityView: View {
         SpatialTapGesture(count: 1)
             .onEnded { _ in
                 canvasFocused = true
+                onCanvasInteraction()
                 store.hover(nil)
                 store.select(nil)
             }
@@ -150,6 +153,7 @@ struct FocusRealityView: View {
             .targetedToAnyEntity()
             .onChanged { value in
                 canvasFocused = true
+                if spatialDragSession == nil { onCanvasInteraction() }
                 guard let id = nodeID(from: value.entity), store.map.node(id: id) != nil else { return }
                 if spatialDragSession == nil {
                     store.beginInteraction()
@@ -201,6 +205,7 @@ struct FocusRealityView: View {
         DragGesture(minimumDistance: 2)
             .onChanged { value in
                 canvasFocused = true
+                if cameraDragOrigin == nil { onCanvasInteraction() }
                 if cameraDragOrigin == nil,
                    legendCorner.contains(value.startLocation, in: canvasSize) {
                     navigationStartedOnLegend = true
@@ -442,11 +447,12 @@ struct FocusRealityView: View {
             }
             .labelStyle(.iconOnly)
             .disabled(!store.canFrameSelection)
-            Button("Reset view", systemImage: "arrow.counterclockwise") {
+            Button("Reset to canonical universe", systemImage: "arrow.counterclockwise") {
                 store.resetCamera()
                 noteNavigationActivity(scheduleIdleReturn: false)
             }
             .labelStyle(.iconOnly)
+            .help("Reset to the canonical universe view (Command-0)")
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 7)

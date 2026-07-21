@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SpatialGuideView: View {
     let finish: () -> Void
+    let dismiss: () -> Void
     @State private var step = SpatialGuideStep.depth
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -15,9 +16,16 @@ struct SpatialGuideView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text("\(step.rawValue + 1) of \(SpatialGuideStep.allCases.count)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 14) {
+                    Text("\(step.rawValue + 1) of \(SpatialGuideStep.allCases.count)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    Button("Close", systemImage: "xmark", action: dismiss)
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.plain)
+                        .keyboardShortcut(.cancelAction)
+                        .help("Close spatial guide")
+                }
             }
             .padding(24)
 
@@ -78,6 +86,7 @@ struct SpatialGuideView: View {
         .frame(width: 780, height: 560)
         .background(WorkspaceBackground())
         .preferredColorScheme(.dark)
+        .onExitCommand(perform: dismiss)
     }
 
     @ViewBuilder

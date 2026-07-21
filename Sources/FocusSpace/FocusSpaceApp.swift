@@ -72,7 +72,7 @@ struct FocusSpaceApp: App {
                 Button("Move Universe Down") { store.orbitCamera(horizontal: 0, vertical: 36) }
                     .keyboardShortcut(.downArrow, modifiers: .option)
                 Divider()
-                Button("Reset View") { store.resetCamera() }
+                Button("Reset to Canonical Universe") { store.resetCamera() }
                     .keyboardShortcut("0", modifiers: .command)
             }
             CommandMenu("Navigate") {

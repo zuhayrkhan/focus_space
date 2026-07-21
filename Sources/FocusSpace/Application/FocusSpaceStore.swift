@@ -10,11 +10,20 @@ final class FocusSpaceStore: ObservableObject {
         var id: Self { self }
     }
 
+    struct VisibilityNotice: Equatable {
+        let hiddenCount: Int
+        let filter: Filter
+
+        var message: String {
+            "Arrange included the whole map; \(hiddenCount) \(hiddenCount == 1 ? "thought is" : "thoughts are") quieter in \(filter.rawValue)."
+        }
+    }
+
     @Published private(set) var map: FocusMap
     @Published var selection: UUID?
-    @Published var filter: Filter = .today
+    @Published private(set) var filter: Filter = .today
     @Published var searchText = ""
-    @Published var isSearching = false
+    @Published private(set) var isSearching = false
     @Published var isFocusModeEnabled = false
     @Published var editingNodeID: UUID?
     @Published private(set) var hoveredNodeID: UUID?
@@ -27,6 +36,7 @@ final class FocusSpaceStore: ObservableObject {
     @Published private(set) var gravityEvaluationDate: Date
     @Published private(set) var latestInteraction: WorkspaceInteraction?
     @Published private(set) var interactionRevision = 0
+    @Published private(set) var visibilityNotice: VisibilityNotice?
 
     private let repository: any FocusMapRepository
     private let nowProvider: () -> Date
@@ -36,6 +46,15 @@ final class FocusSpaceStore: ObservableObject {
     private var isInteracting = false
     private var saveTask: Task<Void, Never>?
     private var personalMapBeforeDemo: FocusMap?
+    private var searchSession: SearchSession?
+    private var searchResultIDs: [UUID] = []
+    private var navigationReturnIntent: FocusCameraIntent?
+
+    private struct SearchSession {
+        let selection: UUID?
+        let cameraIntent: FocusCameraIntent
+        let navigationReturnIntent: FocusCameraIntent?
+    }
 
     init(
         repository: any FocusMapRepository = JSONFocusMapRepository(),
@@ -69,6 +88,25 @@ final class FocusSpaceStore: ObservableObject {
     var canFrameSelection: Bool { selection != nil }
     var canArrange: Bool { map.nodes.count > 1 }
     var storageLocations: FocusMapStorageLocations { repository.storageLocations }
+    var searchResultCount: Int { searchResultIDs.count }
+    var activeSearchResultID: UUID? {
+        guard isSearching else { return nil }
+        return selection.flatMap { searchResultIDs.contains($0) ? $0 : nil }
+    }
+    var searchResultPosition: Int? {
+        guard let activeSearchResultID,
+              let index = searchResultIDs.firstIndex(of: activeSearchResultID) else { return nil }
+        return index + 1
+    }
+    var hiddenNodeCount: Int { map.nodes.count - filterCount(for: filter) }
+    var viewContextTitle: String? {
+        guard case let .framed(id) = cameraIntent.mode,
+              let node = map.node(id: id) else { return nil }
+        return "Branch · \(node.title)"
+    }
+    var viewContextReturnTitle: String {
+        navigationReturnIntent == nil ? "Whole map" : "Previous view"
+    }
 
     var sceneSnapshot: FocusSceneSnapshot {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -125,6 +163,15 @@ final class FocusSpaceStore: ObservableObject {
     }
 
     func select(_ id: UUID?) {
+        if isSearching {
+            if let id, searchResultIDs.contains(id) {
+                selection = id
+                commitSearchResult()
+                recordInteraction(.selectedThought)
+                return
+            }
+            cancelSearch()
+        }
         let selectionChanged = selection != id
         withAnimationIntent { selection = id }
         if id != nil { recordInteraction(.selectedThought) }
@@ -134,6 +181,7 @@ final class FocusSpaceStore: ObservableObject {
     }
 
     func setCameraPose(_ pose: FocusCameraIntent.Pose, animated: Bool = false) {
+        navigationReturnIntent = nil
         cameraIntent = FocusCameraIntent(
             pose: pose.bounded(),
             mode: .free,
@@ -196,6 +244,9 @@ final class FocusSpaceStore: ObservableObject {
 
     private func frameBranch(_ id: UUID) {
         guard let selected = map.node(id: id) else { return }
+        if navigationReturnIntent == nil, cameraIntent.mode != .search {
+            navigationReturnIntent = cameraIntent
+        }
         let ids = map.descendants(of: id).union([id])
         let nodes = map.nodes.filter { ids.contains($0.id) }
         let minX = nodes.map(\.position.x).min() ?? selected.position.x
@@ -225,24 +276,78 @@ final class FocusSpaceStore: ObservableObject {
         )
     }
 
+    func beginSearch() {
+        guard !isSearching else { return }
+        searchSession = SearchSession(
+            selection: selection,
+            cameraIntent: cameraIntent,
+            navigationReturnIntent: navigationReturnIntent
+        )
+        searchResultIDs = []
+        searchText = ""
+        isSearching = true
+    }
+
     func updateSearchText(_ text: String) {
+        if !isSearching { beginSearch() }
         searchText = text
         let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return }
+        guard !query.isEmpty else {
+            searchResultIDs = []
+            restoreSearchOrigin(keepingSession: true)
+            return
+        }
         let matches = map.nodes.filter {
             $0.title.localizedCaseInsensitiveContains(query)
                 || $0.notes.localizedCaseInsensitiveContains(query)
+        }.sorted(by: spatiallyPrecedes)
+        searchResultIDs = matches.map(\.id)
+        guard let first = matches.first else {
+            selection = nil
+            isFocusModeEnabled = false
+            return
         }
-        frameNodes(matches, mode: .search)
+        let resultID = selection.flatMap { searchResultIDs.contains($0) ? $0 : nil } ?? first.id
+        focusSearchResult(resultID)
     }
 
-    var searchResultCount: Int {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return 0 }
-        return map.nodes.count {
-            $0.title.localizedCaseInsensitiveContains(query)
-                || $0.notes.localizedCaseInsensitiveContains(query)
+    func selectSearchResult(by offset: Int) {
+        guard !searchResultIDs.isEmpty else { return }
+        let current = selection.flatMap(searchResultIDs.firstIndex(of:)) ?? 0
+        let next = (current + offset + searchResultIDs.count) % searchResultIDs.count
+        focusSearchResult(searchResultIDs[next])
+    }
+
+    func commitSearchResult() {
+        guard isSearching, let selected = activeSearchResultID else {
+            cancelSearch()
+            return
         }
+        let origin = searchSession
+        searchText = ""
+        searchResultIDs = []
+        searchSession = nil
+        isSearching = false
+        navigationReturnIntent = origin?.cameraIntent
+        cameraIntent = FocusCameraIntent(
+            pose: cameraIntent.pose,
+            mode: .framed(selected),
+            revision: cameraIntent.revision + 1,
+            isAnimated: false
+        )
+    }
+
+    func cancelSearch() {
+        guard isSearching else { return }
+        restoreSearchOrigin(keepingSession: false)
+        searchText = ""
+        searchResultIDs = []
+        searchSession = nil
+        isSearching = false
+    }
+
+    func clearSearchQuery() {
+        updateSearchText("")
     }
 
     func toggleFocusMode() {
@@ -282,6 +387,7 @@ final class FocusSpaceStore: ObservableObject {
     }
 
     func resetCamera(animated: Bool = true) {
+        navigationReturnIntent = nil
         cameraIntent = FocusCameraIntent(
             pose: .canonical,
             mode: .canonical,
@@ -296,6 +402,7 @@ final class FocusSpaceStore: ObservableObject {
     }
 
     func preview(_ scene: DemoScene?) {
+        discardSearchSession()
         if let scene {
             if personalMapBeforeDemo == nil { personalMapBeforeDemo = map }
             demoScene = scene
@@ -397,10 +504,13 @@ final class FocusSpaceStore: ObservableObject {
             }
         }
         frameEntireMap()
+        let hidden = hiddenNodeCount
+        visibilityNotice = hidden > 0 ? VisibilityNotice(hiddenCount: hidden, filter: filter) : nil
     }
 
     private func frameEntireMap() {
         guard !map.nodes.isEmpty else { return }
+        navigationReturnIntent = nil
         let minX = map.nodes.map(\.position.x).min() ?? 0
         let maxX = map.nodes.map(\.position.x).max() ?? 0
         let minY = map.nodes.map(\.position.y).min() ?? 0
@@ -443,6 +553,43 @@ final class FocusSpaceStore: ObservableObject {
             revision: cameraIntent.revision + 1,
             isAnimated: true
         )
+    }
+
+    func setFilter(_ filter: Filter) {
+        self.filter = filter
+        visibilityNotice = nil
+    }
+
+    func filterCount(for filter: Filter) -> Int {
+        map.nodes.count { node in
+            switch filter {
+            case .today: node.attention >= 0.42
+            case .all: true
+            case .parked: node.attention < 0.42
+            }
+        }
+    }
+
+    func showAllThoughts() {
+        setFilter(.all)
+    }
+
+    func dismissVisibilityNotice() {
+        visibilityNotice = nil
+    }
+
+    func returnFromViewContext() {
+        if let destination = navigationReturnIntent {
+            navigationReturnIntent = nil
+            cameraIntent = FocusCameraIntent(
+                pose: destination.pose,
+                mode: destination.mode,
+                revision: cameraIntent.revision + 1,
+                isAnimated: true
+            )
+        } else {
+            frameEntireMap()
+        }
     }
 
     func setKind(_ id: UUID, to kind: FocusNodeKind) {
@@ -518,6 +665,7 @@ final class FocusSpaceStore: ObservableObject {
 
     func importMapData(_ data: Data) throws {
         let imported = try FocusMapJSONCodec.decode(data)
+        discardSearchSession()
         demoScene = nil
         personalMapBeforeDemo = nil
         selection = nil
@@ -713,6 +861,34 @@ final class FocusSpaceStore: ObservableObject {
     private func recordInteraction(_ interaction: WorkspaceInteraction) {
         latestInteraction = interaction
         interactionRevision += 1
+    }
+
+    private func focusSearchResult(_ id: UUID) {
+        guard let node = map.node(id: id), searchResultIDs.contains(id) else { return }
+        selection = id
+        isFocusModeEnabled = false
+        frameNodes([node], mode: .search)
+    }
+
+    private func restoreSearchOrigin(keepingSession: Bool) {
+        guard let searchSession else { return }
+        selection = searchSession.selection.flatMap { map.node(id: $0) == nil ? nil : $0 }
+        isFocusModeEnabled = false
+        navigationReturnIntent = searchSession.navigationReturnIntent
+        cameraIntent = FocusCameraIntent(
+            pose: searchSession.cameraIntent.pose,
+            mode: searchSession.cameraIntent.mode,
+            revision: cameraIntent.revision + 1,
+            isAnimated: true
+        )
+        if !keepingSession { self.searchSession = nil }
+    }
+
+    private func discardSearchSession() {
+        searchText = ""
+        searchResultIDs = []
+        searchSession = nil
+        isSearching = false
     }
 
     private func selectRelativeThought(by offset: Int) {

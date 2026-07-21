@@ -436,7 +436,7 @@ final class ExperienceFoundationTests: XCTestCase {
             let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
             let store = FocusSpaceStore(repository: JSONFocusMapRepository(fileURL: folder.appending(path: "map.json")))
             store.preview(scene)
-            store.filter = .all
+            store.setFilter(.all)
             let renderer = RealityFocusRenderer(quality: .efficient)
             let root = renderer.makeScene()
 
@@ -518,7 +518,7 @@ final class ExperienceFoundationTests: XCTestCase {
         let repository = JSONFocusMapRepository(fileURL: folder.appending(path: "map.json"))
         try repository.save(FocusMap(nodes: [root, branch, sibling, leaf, unrelated]))
         let store = FocusSpaceStore(repository: repository)
-        store.filter = .all
+        store.setFilter(.all)
         store.select(leaf.id)
 
         var snapshot = store.sceneSnapshot
@@ -548,7 +548,7 @@ final class ExperienceFoundationTests: XCTestCase {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         let store = FocusSpaceStore(repository: JSONFocusMapRepository(fileURL: folder.appending(path: "map.json")))
         store.preview(.northStar)
-        store.filter = .all
+        store.setFilter(.all)
         let renderer = RealityFocusRenderer(quality: .efficient)
         let root = renderer.makeScene()
         renderer.reconcile(root: root, snapshot: store.sceneSnapshot)
@@ -576,7 +576,7 @@ final class ExperienceFoundationTests: XCTestCase {
         let repository = JSONFocusMapRepository(fileURL: folder.appending(path: "map.json"))
         try repository.save(FocusMap(nodes: [parent, child, grandchild]))
         let store = FocusSpaceStore(repository: repository)
-        store.filter = .all
+        store.setFilter(.all)
 
         store.setKind(grandchild.id, to: .reference)
         store.setUrgency(grandchild.id, to: .overdue)
@@ -960,7 +960,7 @@ final class ExperienceFoundationTests: XCTestCase {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         let store = FocusSpaceStore(repository: JSONFocusMapRepository(fileURL: folder.appending(path: "map.json")))
         store.preview(.deepHierarchy)
-        store.filter = .all
+        store.setFilter(.all)
         let renderer = RealityFocusRenderer(quality: .efficient)
         let root = renderer.makeScene()
         let initial = store.sceneSnapshot

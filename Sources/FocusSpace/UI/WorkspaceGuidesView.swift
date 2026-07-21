@@ -46,7 +46,10 @@ struct WorkspaceGuidesView: View {
                 }
 
                 DisclosureGroup("View filter") {
-                    Picker("View filter", selection: $store.filter) {
+                    Picker("View filter", selection: Binding(
+                        get: { store.filter },
+                        set: store.setFilter
+                    )) {
                         ForEach(FocusSpaceStore.Filter.allCases) { filter in
                             Text(filter.rawValue).tag(filter)
                         }
