@@ -49,6 +49,11 @@ struct FocusSpaceApp: App {
                     .keyboardShortcut("z", modifiers: [.command, .shift])
                     .disabled(!store.canRedo)
             }
+            CommandGroup(after: .pasteboard) {
+                Divider()
+                Button("Find in Focus Space…", action: store.requestSearch)
+                    .keyboardShortcut("f", modifiers: .command)
+            }
             CommandMenu("View") {
                 Button("Arrange Mind Map", action: store.arrangeMindMap)
                     .keyboardShortcut("l", modifiers: [.command, .shift])

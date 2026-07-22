@@ -42,7 +42,8 @@ final class RealityFocusRenderer {
         snapshot: FocusSceneSnapshot,
         shapePreference: NodeShapePreference = .semantic,
         highContrast: Bool = false,
-        textScale: Float = 1
+        textScale: Float = 1,
+        reduceMotion: Bool = false
     ) {
         let shapeChanged = self.shapePreference != shapePreference
         let accessibilityChanged = self.highContrast != highContrast || self.textScale != textScale
@@ -55,17 +56,18 @@ final class RealityFocusRenderer {
             ? [:]
             : Dictionary(uniqueKeysWithValues: (lastSnapshot?.items ?? []).map { ($0.id, $0) })
 
-        let desiredIDs = Set(snapshot.items.map { $0.id.uuidString })
+        let visibleItems = snapshot.items.filter { $0.presentationLevel.isSpatiallyVisible }
+        let desiredIDs = Set(visibleItems.map { $0.id.uuidString })
         for child in root.children where child.name.hasPrefix("node-") {
             let id = String(child.name.dropFirst(5))
             if !desiredIDs.contains(id) { child.removeFromParent() }
         }
 
-        for item in snapshot.items {
+        for item in visibleItems {
             let name = "node-\(item.id.uuidString)"
             let entity = root.findEntity(named: name) ?? makeNode(name: name)
             if entity.parent == nil { root.addChild(entity) }
-            update(entity: entity, for: item, previous: previousItems[item.id])
+            update(entity: entity, for: item, previous: previousItems[item.id], reduceMotion: reduceMotion)
         }
 
         reconcileRelationships(root: root, snapshot: snapshot)
@@ -94,6 +96,7 @@ final class RealityFocusRenderer {
     func updateGuideDepth(root: Entity, snapshot: FocusSceneSnapshot) {
         guard let guides = root.findEntity(named: "orbital-guides") else { return }
         let nearestAllowedZ = snapshot.items
+            .filter { $0.presentationLevel.isSpatiallyVisible }
             .map { position(for: $0).z }
             .min()
             .map { $0 - 0.32 }
@@ -178,11 +181,13 @@ final class RealityFocusRenderer {
             guard let entity = sceneRoot.findEntity(named: "node-\(item.id.uuidString)") else { continue }
             entity.position = position(for: item)
             let depthScale = Float(0.78 + item.attention * 0.24)
-            entity.scale = SIMD3<Float>(repeating: depthScale)
+            entity.scale = SIMD3<Float>(repeating: depthScale * item.presentationLevel.scale)
         }
         let preview = FocusSceneSnapshot(
             items: snapshot.items.map { replacements[$0.id] ?? $0 },
-            relationships: snapshot.relationships
+            relationships: snapshot.relationships,
+            workspacePresentationLevel: snapshot.workspacePresentationLevel,
+            islands: snapshot.islands
         )
         reconcileRelationships(root: sceneRoot, snapshot: preview)
     }
@@ -268,7 +273,8 @@ final class RealityFocusRenderer {
     private func update(
         entity: Entity,
         for item: FocusSceneSnapshot.Item,
-        previous: FocusSceneSnapshot.Item?
+        previous: FocusSceneSnapshot.Item?,
+        reduceMotion: Bool
     ) {
         let style = NodeVisualStyle.resolve(
             kind: item.kind,
@@ -277,23 +283,33 @@ final class RealityFocusRenderer {
             urgency: item.urgency,
             isEnabled: item.isEnabled,
             shapePreference: shapePreference,
-            isExpanded: item.isSelected && !item.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            isExpanded: item.presentationLevel == .atlas
+                || item.isSelected && !item.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             colorVariation: colorVariation(for: item.id)
         )
         let targetPosition = position(for: item)
+        let depthScale = Float(0.78 + item.attention * 0.24)
+        let targetScale = SIMD3<Float>(repeating: depthScale * item.presentationLevel.scale)
+        let presentationChanged = previous?.presentationLevel != item.presentationLevel
+            || previous?.renderPosition != item.renderPosition
         if let previous,
-           previous.attention != item.attention,
-           item.isGravityInfluenced,
-           !isAmbientMotionPaused {
+           !reduceMotion,
+           presentationChanged || previous.attention != item.attention && item.isGravityInfluenced {
             let target = Transform(
-                scale: entity.transform.scale,
+                scale: targetScale,
                 rotation: entity.transform.rotation,
                 translation: targetPosition
             )
             entity.stopAllAnimations(recursive: false)
-            entity.move(to: target, relativeTo: entity.parent, duration: FocusMotion.gravityDuration, timingFunction: .easeInOut)
+            entity.move(
+                to: target,
+                relativeTo: entity.parent,
+                duration: presentationChanged ? FocusMotion.cameraDuration : FocusMotion.gravityDuration,
+                timingFunction: .easeInOut
+            )
         } else {
             entity.position = targetPosition
+            entity.scale = targetScale
         }
         guard needsVisualUpdate(from: previous, to: item) else { return }
         let contextOpacity: Float = switch item.contextRole {
@@ -304,12 +320,10 @@ final class RealityFocusRenderer {
         entity.components.set(OpacityComponent(
             opacity: item.isDimmed ? (highContrast ? 0.15 : 0.06) : visibleOpacity * contextOpacity
         ))
-        let depthScale = Float(0.78 + item.attention * 0.24)
-        entity.scale = SIMD3<Float>(repeating: depthScale)
-
         guard let model = entity as? ModelEntity else { return }
         model.model?.mesh = mesh(for: style)
         model.generateCollisionShapes(recursive: false)
+        updateInteractionTarget(on: model, item: item, style: style)
         let color = style.color.nsColor.withSaturation(CGFloat(style.saturation))
         model.model?.materials = [
             PhysicallyBasedMaterial.focusSpace(
@@ -320,6 +334,30 @@ final class RealityFocusRenderer {
             )
         ]
         updateDecorations(on: model, item: item, style: style)
+    }
+
+    private func updateInteractionTarget(
+        on entity: ModelEntity,
+        item: FocusSceneSnapshot.Item,
+        style: NodeVisualStyle
+    ) {
+        for child in entity.children where child.name == "semantic-hit-target" {
+            child.removeFromParent()
+        }
+        guard item.presentationLevel == .compact || item.presentationLevel == .silhouette else { return }
+        let inverseScale = 1 / max(item.presentationLevel.scale, 0.01)
+        let target = Entity()
+        target.name = "semantic-hit-target"
+        target.position.z = 0.01
+        target.components.set(InputTargetComponent())
+        target.components.set(CollisionComponent(shapes: [
+            .generateBox(size: SIMD3<Float>(
+                max(style.width, 1.18 * inverseScale),
+                max(style.height, 0.62 * inverseScale),
+                0.03
+            ))
+        ]))
+        entity.addChild(target)
     }
 
     private func needsVisualUpdate(
@@ -341,6 +379,9 @@ final class RealityFocusRenderer {
             || previous.isDimmed != item.isDimmed
             || previous.isHovered != item.isHovered
             || previous.contextRole != item.contextRole
+            || previous.presentationLevel != item.presentationLevel
+            || previous.renderPosition != item.renderPosition
+            || previous.presentationSummary != item.presentationSummary
     }
 
     private func mesh(for style: NodeVisualStyle) -> MeshResource {
@@ -459,11 +500,16 @@ final class RealityFocusRenderer {
         case .task, .reference: 12
         case .someday: 14
         }
-        let title = NodeLabelLayout.displayTitle(item.title, singleLineLimit: singleLineLimit)
-        let notes = NodeNotesLayout.displayText(item.notes)
-        let showsNotes = item.isSelected && !notes.isEmpty
+        let title = NodeLabelLayout.displayTitle(
+            item.title,
+            maximumCharacters: item.presentationLevel == .compact ? 24 : 38,
+            singleLineLimit: singleLineLimit
+        )
+        let notes = NodeNotesLayout.displayText(item.presentationSummary ?? item.notes)
+        let showsNotes = item.presentationLevel == .atlas
+            || item.isSelected && !notes.isEmpty
         let attentionBand = Int(item.attention * 20)
-        let decorationName = "decorations-\(style.silhouette)-\(style.width)-\(style.height)-\(item.kind.rawValue)-\(item.urgency.rawValue)-\(item.isEnabled)-\(item.isSelected)-\(item.isHovered)-\(item.contextRole)-\(attentionBand)-\(textScale)-\(highContrast)-\(title)-\(notes.hashValue)"
+        let decorationName = "decorations-\(style.silhouette)-\(style.width)-\(style.height)-\(item.kind.rawValue)-\(item.urgency.rawValue)-\(item.isEnabled)-\(item.isSelected)-\(item.isHovered)-\(item.contextRole)-\(item.presentationLevel)-\(attentionBand)-\(textScale)-\(highContrast)-\(title)-\(notes.hashValue)"
         if entity.children.contains(where: { $0.name == decorationName }) { return }
         for child in entity.children where child.name.hasPrefix("decorations-") { child.removeFromParent() }
 
@@ -484,7 +530,7 @@ final class RealityFocusRenderer {
             weight: item.isSelected ? .semibold : .medium
         )
         let mesh = MeshResource.generateText(
-            title,
+            item.presentationLevel == .silhouette ? "" : title,
             extrusionDepth: 0.002,
             font: font,
             containerFrame: CGRect(
@@ -549,7 +595,7 @@ final class RealityFocusRenderer {
         }
 
         let glyph = makeGlyph(
-            style.glyph,
+            item.presentationLevel == .silhouette ? "" : style.glyph,
             size: 0.12,
             color: NSColor(white: 1, alpha: 0.9),
             name: "kind-glyph"
@@ -673,8 +719,8 @@ final class RealityFocusRenderer {
             guard let source = byID[relationship.sourceID], let target = byID[relationship.targetID] else { continue }
             let sourceStyle = visualStyle(for: source)
             let targetStyle = visualStyle(for: target)
-            let sourceScale = Float(0.78 + source.attention * 0.24)
-            let targetScale = Float(0.78 + target.attention * 0.24)
+            let sourceScale = Float(0.78 + source.attention * 0.24) * source.presentationLevel.scale
+            let targetScale = Float(0.78 + target.attention * 0.24) * target.presentationLevel.scale
             let name = relationshipName(relationship)
             let key = RelationshipRenderKey(
                 relationship: relationship,
@@ -738,7 +784,8 @@ final class RealityFocusRenderer {
             urgency: item.urgency,
             isEnabled: item.isEnabled,
             shapePreference: shapePreference,
-            isExpanded: item.isSelected && !item.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            isExpanded: item.presentationLevel == .atlas
+                || item.isSelected && !item.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             colorVariation: colorVariation(for: item.id)
         )
     }
@@ -807,16 +854,18 @@ final class RealityFocusRenderer {
 
     private func position(for item: FocusSceneSnapshot.Item) -> SIMD3<Float> {
         let range = tokens.attentionNearZ - tokens.attentionFarZ
+        let renderPosition = item.renderPosition ?? item.position
         return SIMD3<Float>(
-            Float(item.position.x),
-            Float(item.position.y) + NodeVisualStyle.resolve(
+            Float(renderPosition.x),
+            Float(renderPosition.y) + NodeVisualStyle.resolve(
                 kind: item.kind,
                 attention: item.attention,
                 hierarchyDepth: item.hierarchyDepth,
                 urgency: item.urgency,
                 isEnabled: item.isEnabled,
                 shapePreference: shapePreference,
-                isExpanded: item.isSelected && !item.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                isExpanded: item.presentationLevel == .atlas
+                    || item.isSelected && !item.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ).hierarchyOffset,
             tokens.attentionFarZ + Float(item.attention) * range
         )

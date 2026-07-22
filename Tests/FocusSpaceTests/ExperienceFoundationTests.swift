@@ -440,11 +440,13 @@ final class ExperienceFoundationTests: XCTestCase {
             let renderer = RealityFocusRenderer(quality: .efficient)
             let root = renderer.makeScene()
 
-            renderer.reconcile(root: root, snapshot: store.sceneSnapshot)
+            let snapshot = store.sceneSnapshot
+            renderer.reconcile(root: root, snapshot: snapshot)
 
             let renderedNodeCount = root.children.filter { $0.name.hasPrefix("node-") }.count
-            XCTAssertEqual(renderedNodeCount, scene.map.nodes.count, scene.rawValue)
-            for node in scene.map.nodes {
+            let visibleNodes = snapshot.items.filter { $0.presentationLevel.isSpatiallyVisible }
+            XCTAssertEqual(renderedNodeCount, visibleNodes.count, scene.rawValue)
+            for node in visibleNodes {
                 XCTAssertNotNil(root.findEntity(named: "node-\(node.id.uuidString)"), node.title)
             }
         }
@@ -919,7 +921,11 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertEqual(store.cameraIntent.pose.targetAttention, 0.5, accuracy: 0.001)
         XCTAssertEqual(store.cameraIntent.pose.yaw, angleBeforeSelection.yaw, accuracy: 0.001)
         XCTAssertEqual(store.cameraIntent.pose.pitch, angleBeforeSelection.pitch, accuracy: 0.001)
-        XCTAssertLessThan(store.cameraIntent.pose.distance, angleBeforeSelection.distance)
+        XCTAssertGreaterThan(
+            store.cameraIntent.pose.distance,
+            angleBeforeSelection.distance,
+            "A branch that is wider than the current close view must back out enough to remain fully framed"
+        )
         XCTAssertEqual(store.map, originalMap)
 
         let framedBranch = store.cameraIntent

@@ -40,7 +40,8 @@ struct FocusRealityView: View {
                 snapshot: store.sceneSnapshot,
                 shapePreference: differentiateWithoutColor ? .semantic : nodeShapePreference,
                 highContrast: colorSchemeContrast == .increased,
-                textScale: rendererTextScale
+                textScale: rendererTextScale,
+                reduceMotion: reduceMotion
             )
             renderer.updateAmbient(root: root, reduceMotion: reduceMotion)
             renderer.updateCamera(root: root, intent: store.cameraIntent, reduceMotion: reduceMotion)
@@ -179,7 +180,10 @@ struct FocusRealityView: View {
                     return previewItem(
                         item,
                         position: SpatialPoint(x: origin.x + dx, y: origin.y + dy),
-                        attention: item.attention
+                        attention: item.attention,
+                        renderPosition: item.renderPosition.map {
+                            SpatialPoint(x: $0.x + dx, y: $0.y + dy)
+                        }
                     )
                 }
                 renderer.previewNodeDrag(items: previewItems, snapshot: session.snapshot)
@@ -565,7 +569,8 @@ struct FocusRealityView: View {
     private func previewItem(
         _ item: FocusSceneSnapshot.Item,
         position: SpatialPoint,
-        attention: Double
+        attention: Double,
+        renderPosition: SpatialPoint? = nil
     ) -> FocusSceneSnapshot.Item {
         FocusSceneSnapshot.Item(
             id: item.id,
@@ -584,7 +589,10 @@ struct FocusRealityView: View {
             isSelected: item.isSelected,
             isDimmed: item.isDimmed,
             isHovered: item.isHovered,
-            contextRole: item.contextRole
+            contextRole: item.contextRole,
+            presentationLevel: item.presentationLevel,
+            renderPosition: renderPosition ?? item.renderPosition,
+            presentationSummary: item.presentationSummary
         )
     }
 

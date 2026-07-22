@@ -108,6 +108,14 @@ struct ContentView: View {
                 searchFocused = false
             }
         }
+        .onChange(of: store.searchRequestRevision) { _, _ in
+            workspaceGuidesVisible = false
+            spatialGuideVisible = false
+            Task { @MainActor in
+                await Task.yield()
+                searchFocused = true
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { store.saveImmediately() }
         }
@@ -277,7 +285,23 @@ struct ContentView: View {
                         store.cancelSearch()
                     } else {
                         workspaceGuidesVisible = false
-                        store.beginSearch()
+                        store.requestSearch()
+                    }
+                }
+            }
+            if store.islandSummaries.count > 1 {
+                Menu("Islands", systemImage: "point.3.connected.trianglepath.dotted") {
+                    Text("\(store.workspacePresentationLevel.rawValue.capitalized) view")
+                    Divider()
+                    ForEach(store.islandSummaries) { island in
+                        Button {
+                            store.frameIsland(island.rootID)
+                        } label: {
+                            VStack(alignment: .leading) {
+                                Text(island.title)
+                                Text("\(island.thoughtCount) thoughts")
+                            }
+                        }
                     }
                 }
             }
@@ -400,9 +424,14 @@ struct ContentView: View {
                 Label(title, systemImage: "scope")
                     .lineLimit(1)
                 Divider().frame(height: 14)
-                Button(store.viewContextReturnTitle) { store.returnFromViewContext() }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.cyan)
+                if store.canReturnFromViewContext {
+                    Button(store.viewContextReturnTitle) { store.returnFromViewContext() }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.cyan)
+                } else {
+                    Text("Choose an island")
+                        .foregroundStyle(.secondary)
+                }
             }
             .font(.caption.weight(.medium))
             .padding(.horizontal, 12)

@@ -26,6 +26,9 @@ struct FocusSceneSnapshot: Equatable, Sendable {
         let isDimmed: Bool
         let isHovered: Bool
         let contextRole: ContextRole
+        let presentationLevel: NodePresentationLevel
+        let renderPosition: SpatialPoint?
+        let presentationSummary: String?
 
         init(
             id: UUID,
@@ -44,7 +47,10 @@ struct FocusSceneSnapshot: Equatable, Sendable {
             isSelected: Bool,
             isDimmed: Bool,
             isHovered: Bool = false,
-            contextRole: ContextRole = .none
+            contextRole: ContextRole = .none,
+            presentationLevel: NodePresentationLevel = .full,
+            renderPosition: SpatialPoint? = nil,
+            presentationSummary: String? = nil
         ) {
             self.id = id
             self.title = title
@@ -63,6 +69,9 @@ struct FocusSceneSnapshot: Equatable, Sendable {
             self.isDimmed = isDimmed
             self.isHovered = isHovered
             self.contextRole = contextRole
+            self.presentationLevel = presentationLevel
+            self.renderPosition = renderPosition
+            self.presentationSummary = presentationSummary
         }
     }
 
@@ -100,9 +109,18 @@ struct FocusSceneSnapshot: Equatable, Sendable {
 
     let items: [Item]
     let relationships: [Relationship]
+    let workspacePresentationLevel: WorkspacePresentationLevel
+    let islands: [FocusIslandSummary]
 
-    init(items: [Item], relationships: [Relationship] = []) {
+    init(
+        items: [Item],
+        relationships: [Relationship] = [],
+        workspacePresentationLevel: WorkspacePresentationLevel = .detail,
+        islands: [FocusIslandSummary] = []
+    ) {
         self.items = items
         self.relationships = relationships
+        self.workspacePresentationLevel = workspacePresentationLevel
+        self.islands = islands
     }
 }

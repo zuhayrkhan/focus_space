@@ -37,18 +37,22 @@ final class FocusSpaceStore: ObservableObject {
     @Published private(set) var latestInteraction: WorkspaceInteraction?
     @Published private(set) var interactionRevision = 0
     @Published private(set) var visibilityNotice: VisibilityNotice?
+    @Published private(set) var searchRequestRevision = 0
 
     private let repository: any FocusMapRepository
     private let nowProvider: () -> Date
     private let autosaveDelay: Duration
     private var undoMaps: [FocusMap] = []
     private var redoMaps: [FocusMap] = []
+    private var undoAtlasOffsets: [[UUID: SpatialPoint]] = []
+    private var redoAtlasOffsets: [[UUID: SpatialPoint]] = []
     private var isInteracting = false
     private var saveTask: Task<Void, Never>?
     private var personalMapBeforeDemo: FocusMap?
     private var searchSession: SearchSession?
     private var searchResultIDs: [UUID] = []
     private var navigationReturnIntent: FocusCameraIntent?
+    private var atlasOffsets: [UUID: SpatialPoint] = [:]
 
     private struct SearchSession {
         let selection: UUID?
@@ -100,20 +104,39 @@ final class FocusSpaceStore: ObservableObject {
     }
     var hiddenNodeCount: Int { map.nodes.count - filterCount(for: filter) }
     var viewContextTitle: String? {
+        if workspacePresentationLevel == .atlas {
+            return "Atlas · \(islandSummaries.count) \(islandSummaries.count == 1 ? "island" : "islands")"
+        }
         guard case let .framed(id) = cameraIntent.mode,
               let node = map.node(id: id) else { return nil }
         return "Branch · \(node.title)"
     }
+    var canReturnFromViewContext: Bool {
+        if case .framed = cameraIntent.mode { return true }
+        return false
+    }
     var viewContextReturnTitle: String {
         navigationReturnIntent == nil ? "Whole map" : "Previous view"
     }
+    var spatialPresentation: SpatialPresentation {
+        SpatialPresentation.make(
+            map: map,
+            cameraIntent: cameraIntent,
+            selection: selection,
+            atlasOffsets: atlasOffsets
+        )
+    }
+    var workspacePresentationLevel: WorkspacePresentationLevel { spatialPresentation.workspaceLevel }
+    var islandSummaries: [FocusIslandSummary] { spatialPresentation.islands }
 
     var sceneSnapshot: FocusSceneSnapshot {
+        let presentation = spatialPresentation
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let contextID = hoveredNodeID ?? selection
         let contextIDs = contextID.map(contextNodeIDs(around:)) ?? []
         let ancestryIDs = Set(contextID.map(map.ancestors(of:)) ?? [])
         let items = map.nodes.map { node in
+            let presentationIntent = presentation.nodeIntents[node.id]
             let gravity = gravityAssessment(for: node)
             let effectiveAttention = gravity.attention
             let includedByFilter: Bool = switch filter {
@@ -148,7 +171,10 @@ final class FocusSpaceStore: ObservableObject {
                     contextID: contextID,
                     contextIDs: contextIDs,
                     ancestryIDs: ancestryIDs
-                )
+                ),
+                presentationLevel: presentationIntent?.level ?? .full,
+                renderPosition: presentationIntent?.renderPosition,
+                presentationSummary: presentationIntent?.summary
             )
         }
         return FocusSceneSnapshot(
@@ -158,7 +184,9 @@ final class FocusSpaceStore: ObservableObject {
                 contextID: contextID,
                 contextIDs: contextIDs,
                 ancestryIDs: ancestryIDs
-            )
+            ),
+            workspacePresentationLevel: presentation.workspaceLevel,
+            islands: presentation.islands
         )
     }
 
@@ -266,7 +294,10 @@ final class FocusSpaceStore: ObservableObject {
             targetAttention: attention,
             yaw: cameraIntent.pose.yaw,
             pitch: cameraIntent.pose.pitch,
-            distance: max(4.2, min(desiredDistance, cameraIntent.pose.distance * 0.82))
+            distance: max(
+                FocusCameraIntent.Pose.minimumDistance,
+                min(12.5, max(desiredDistance, cameraIntent.pose.distance * 0.82))
+            )
         ).bounded()
         cameraIntent = FocusCameraIntent(
             pose: pose,
@@ -286,6 +317,11 @@ final class FocusSpaceStore: ObservableObject {
         searchResultIDs = []
         searchText = ""
         isSearching = true
+    }
+
+    func requestSearch() {
+        beginSearch()
+        searchRequestRevision += 1
     }
 
     func updateSearchText(_ text: String) {
@@ -403,6 +439,7 @@ final class FocusSpaceStore: ObservableObject {
 
     func preview(_ scene: DemoScene?) {
         discardSearchSession()
+        atlasOffsets.removeAll()
         if let scene {
             if personalMapBeforeDemo == nil { personalMapBeforeDemo = map }
             demoScene = scene
@@ -415,7 +452,7 @@ final class FocusSpaceStore: ObservableObject {
         selection = nil
         isFocusModeEnabled = false
         hoveredNodeID = nil
-        if scene == .animalFamilies || scene == .plantFamilies {
+        if map.nodes.count >= 48 {
             frameEntireMap()
         } else {
             resetCamera(animated: true)
@@ -423,6 +460,8 @@ final class FocusSpaceStore: ObservableObject {
         editingNodeID = nil
         undoMaps.removeAll()
         redoMaps.removeAll()
+        undoAtlasOffsets.removeAll()
+        redoAtlasOffsets.removeAll()
     }
 
     func beginRenaming(_ id: UUID) {
@@ -454,6 +493,9 @@ final class FocusSpaceStore: ObservableObject {
         from originPositions: [UUID: SpatialPoint],
         by delta: SpatialPoint
     ) {
+        let atlasRoots = workspacePresentationLevel == .atlas
+            ? islandSummaries.map(\.rootID).filter(nodeIDs.contains)
+            : []
         mutate(recordingUndo: !isInteracting) { map in
             for id in nodeIDs {
                 guard let origin = originPositions[id] else { continue }
@@ -461,6 +503,10 @@ final class FocusSpaceStore: ObservableObject {
                     $0.move(to: SpatialPoint(x: origin.x + delta.x, y: origin.y + delta.y))
                 }
             }
+        }
+        for rootID in atlasRoots {
+            let origin = atlasOffsets[rootID] ?? .zero
+            atlasOffsets[rootID] = SpatialPoint(x: origin.x + delta.x, y: origin.y + delta.y)
         }
     }
 
@@ -503,6 +549,7 @@ final class FocusSpaceStore: ObservableObject {
                 map.nodes[index].move(to: position)
             }
         }
+        atlasOffsets.removeAll()
         frameEntireMap()
         let hidden = hiddenNodeCount
         visibilityNotice = hidden > 0 ? VisibilityNotice(hiddenCount: hidden, filter: filter) : nil
@@ -511,6 +558,46 @@ final class FocusSpaceStore: ObservableObject {
     private func frameEntireMap() {
         guard !map.nodes.isEmpty else { return }
         navigationReturnIntent = nil
+        let overviewProbe = FocusCameraIntent(
+            pose: cameraIntent.pose,
+            mode: .overview,
+            revision: cameraIntent.revision,
+            isAnimated: true
+        )
+        let presentation = SpatialPresentation.make(
+            map: map,
+            cameraIntent: overviewProbe,
+            selection: nil,
+            atlasOffsets: atlasOffsets
+        )
+        if presentation.workspaceLevel == .atlas {
+            let atlasItems = presentation.nodeIntents.compactMap { id, intent -> (FocusNode, SpatialPoint)? in
+                guard intent.level == .atlas,
+                      let node = map.node(id: id),
+                      let position = intent.renderPosition else { return nil }
+                return (node, position)
+            }
+            guard !atlasItems.isEmpty else { return }
+            let minX = atlasItems.map { $0.1.x }.min() ?? 0
+            let maxX = atlasItems.map { $0.1.x }.max() ?? 0
+            let minY = atlasItems.map { $0.1.y }.min() ?? 0
+            let maxY = atlasItems.map { $0.1.y }.max() ?? 0
+            let attention = atlasItems.map { $0.0.attention }.reduce(0, +) / Double(atlasItems.count)
+            let span = max(maxX - minX, (maxY - minY) * 1.6)
+            cameraIntent = FocusCameraIntent(
+                pose: FocusCameraIntent.Pose(
+                    target: SpatialPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2),
+                    targetAttention: attention,
+                    yaw: 0,
+                    pitch: 0,
+                    distance: min(max(8.8 + span * 0.42, 10.5), 14)
+                ).bounded(),
+                mode: .overview,
+                revision: cameraIntent.revision + 1,
+                isAnimated: true
+            )
+            return
+        }
         let minX = map.nodes.map(\.position.x).min() ?? 0
         let maxX = map.nodes.map(\.position.x).max() ?? 0
         let minY = map.nodes.map(\.position.y).min() ?? 0
@@ -590,6 +677,11 @@ final class FocusSpaceStore: ObservableObject {
         } else {
             frameEntireMap()
         }
+    }
+
+    func frameIsland(_ rootID: UUID) {
+        guard islandSummaries.contains(where: { $0.rootID == rootID }) else { return }
+        select(rootID)
     }
 
     func setKind(_ id: UUID, to kind: FocusNodeKind) {
@@ -672,9 +764,12 @@ final class FocusSpaceStore: ObservableObject {
         hoveredNodeID = nil
         editingNodeID = nil
         isFocusModeEnabled = false
+        atlasOffsets.removeAll()
         map = imported
         undoMaps.removeAll()
         redoMaps.removeAll()
+        undoAtlasOffsets.removeAll()
+        redoAtlasOffsets.removeAll()
         saveImmediately()
     }
 
@@ -725,14 +820,20 @@ final class FocusSpaceStore: ObservableObject {
         guard !isInteracting else { return }
         isInteracting = true
         undoMaps.append(map)
+        undoAtlasOffsets.append(atlasOffsets)
         if undoMaps.count > 100 { undoMaps.removeFirst() }
+        if undoAtlasOffsets.count > 100 { undoAtlasOffsets.removeFirst() }
         redoMaps.removeAll()
+        redoAtlasOffsets.removeAll()
     }
 
     func endInteraction() {
         guard isInteracting else { return }
         isInteracting = false
-        if undoMaps.last == map { undoMaps.removeLast() }
+        if undoMaps.last == map {
+            undoMaps.removeLast()
+            if !undoAtlasOffsets.isEmpty { undoAtlasOffsets.removeLast() }
+        }
     }
 
     @discardableResult
@@ -784,7 +885,9 @@ final class FocusSpaceStore: ObservableObject {
     func undo() {
         guard let previous = undoMaps.popLast() else { return }
         redoMaps.append(map)
+        redoAtlasOffsets.append(atlasOffsets)
         map = previous
+        atlasOffsets = undoAtlasOffsets.popLast() ?? [:]
         validateSelection()
         scheduleSave()
     }
@@ -792,19 +895,25 @@ final class FocusSpaceStore: ObservableObject {
     func redo() {
         guard let next = redoMaps.popLast() else { return }
         undoMaps.append(map)
+        undoAtlasOffsets.append(atlasOffsets)
         map = next
+        atlasOffsets = redoAtlasOffsets.popLast() ?? [:]
         validateSelection()
         scheduleSave()
     }
 
     private func mutate(recordingUndo: Bool = true, _ change: (inout FocusMap) -> Void) {
         let previous = map
+        let previousAtlasOffsets = atlasOffsets
         change(&map)
         guard previous != map else { return }
         if recordingUndo {
             undoMaps.append(previous)
+            undoAtlasOffsets.append(previousAtlasOffsets)
             if undoMaps.count > 100 { undoMaps.removeFirst() }
+            if undoAtlasOffsets.count > 100 { undoAtlasOffsets.removeFirst() }
             redoMaps.removeAll()
+            redoAtlasOffsets.removeAll()
         }
         scheduleSave()
     }
@@ -955,7 +1064,10 @@ final class FocusSpaceStore: ObservableObject {
         var result: [FocusSceneSnapshot.Relationship] = []
 
         for child in items {
-            guard let parentID = child.parentID, let parent = byID[parentID] else { continue }
+            guard child.presentationLevel.isSpatiallyVisible,
+                  let parentID = child.parentID,
+                  let parent = byID[parentID],
+                  parent.presentationLevel.isSpatiallyVisible else { continue }
             let emphasis = relationshipEmphasis(
                 sourceID: parentID,
                 targetID: child.id,
@@ -980,7 +1092,8 @@ final class FocusSpaceStore: ObservableObject {
             for relatedID in node.relatedNodeIDs where byID[relatedID] != nil {
                 let pair: Set<UUID> = [node.id, relatedID]
                 guard pair.count == 2, seenCrossLinks.insert(pair).inserted,
-                      let source = byID[node.id], let target = byID[relatedID] else { continue }
+                      let source = byID[node.id], source.presentationLevel.isSpatiallyVisible,
+                      let target = byID[relatedID], target.presentationLevel.isSpatiallyVisible else { continue }
                 let ordered = [node.id, relatedID].sorted { $0.uuidString < $1.uuidString }
                 let emphasis = relationshipEmphasis(
                     sourceID: ordered[0],

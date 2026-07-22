@@ -1,4 +1,5 @@
 import XCTest
+import RealityKit
 @testable import FocusSpace
 
 final class ProgressiveDisclosureTests: XCTestCase {
@@ -170,6 +171,145 @@ final class ProgressiveDisclosureTests: XCTestCase {
         XCTAssertEqual(store.cameraIntent.mode, origin.mode)
         XCTAssertEqual(store.cameraIntent.pose, origin.pose)
         XCTAssertNil(store.viewContextTitle)
+    }
+
+    @MainActor
+    func testCommandFindRequestsAndRefocusesOneSearchSession() throws {
+        let store = try makeStore(nodes: [FocusNode(title: "One")])
+
+        store.requestSearch()
+        XCTAssertTrue(store.isSearching)
+        XCTAssertEqual(store.searchRequestRevision, 1)
+
+        store.requestSearch()
+        XCTAssertTrue(store.isSearching)
+        XCTAssertEqual(store.searchRequestRevision, 2)
+    }
+
+    @MainActor
+    func testLargeMapOpensAsReadableRootAtlas() throws {
+        let store = try makeStore(nodes: [])
+        store.preview(.largeMap)
+        store.setFilter(.all)
+
+        let snapshot = store.sceneSnapshot
+        let roots = store.map.nodes.filter { $0.parentID == nil }
+        let visible = snapshot.items.filter { $0.presentationLevel.isSpatiallyVisible }
+
+        XCTAssertEqual(snapshot.workspacePresentationLevel, .atlas)
+        XCTAssertEqual(snapshot.islands.count, roots.count)
+        XCTAssertEqual(visible.count, roots.count)
+        XCTAssertTrue(visible.allSatisfy { $0.presentationLevel == .atlas })
+        XCTAssertTrue(visible.allSatisfy { $0.presentationSummary?.contains("attention") == true })
+        XCTAssertLessThanOrEqual(store.cameraIntent.pose.distance, 14)
+        XCTAssertEqual(store.viewContextTitle, "Atlas · 18 islands")
+    }
+
+    @MainActor
+    func testSelectingAnAtlasIslandRevealsOnlyItsBranchWithoutChangingAttention() throws {
+        let store = try makeStore(nodes: [])
+        store.preview(.largeMap)
+        store.setFilter(.all)
+        let island = try XCTUnwrap(store.islandSummaries.first)
+        let attentionBefore = Dictionary(uniqueKeysWithValues: store.map.nodes.map { ($0.id, $0.attention) })
+
+        store.frameIsland(island.rootID)
+
+        let snapshot = store.sceneSnapshot
+        let visibleIDs = Set(snapshot.items.filter { $0.presentationLevel.isSpatiallyVisible }.map(\.id))
+        XCTAssertNotEqual(snapshot.workspacePresentationLevel, .atlas)
+        XCTAssertEqual(store.selection, island.rootID)
+        XCTAssertEqual(visibleIDs, island.nodeIDs)
+        XCTAssertEqual(
+            Dictionary(uniqueKeysWithValues: store.map.nodes.map { ($0.id, $0.attention) }),
+            attentionBefore
+        )
+    }
+
+    @MainActor
+    func testAtlasOptionDragKeepsTheSummaryUnderThePointerAndUndoesAsOneCommand() throws {
+        let store = try makeStore(nodes: [])
+        store.preview(.largeMap)
+        store.setFilter(.all)
+        let island = try XCTUnwrap(store.islandSummaries.first)
+        let connected = store.map.connectedComponent(containing: island.rootID)
+        let origins = Dictionary(uniqueKeysWithValues: store.map.nodes.compactMap { node in
+            connected.contains(node.id) ? (node.id, node.position) : nil
+        })
+        let summaryBefore = try XCTUnwrap(
+            store.sceneSnapshot.items.first { $0.id == island.rootID }?.renderPosition
+        )
+        let delta = SpatialPoint(x: 0.7, y: -0.4)
+
+        store.beginInteraction()
+        store.translate(connected, from: origins, by: delta)
+        store.endInteraction()
+
+        let summaryAfter = try XCTUnwrap(
+            store.sceneSnapshot.items.first { $0.id == island.rootID }?.renderPosition
+        )
+        XCTAssertEqual(summaryAfter.x, summaryBefore.x + delta.x, accuracy: 0.001)
+        XCTAssertEqual(summaryAfter.y, summaryBefore.y + delta.y, accuracy: 0.001)
+        XCTAssertEqual(
+            try XCTUnwrap(store.map.node(id: island.rootID)?.position.x),
+            origins[island.rootID]!.x + delta.x,
+            accuracy: 0.001
+        )
+
+        store.undo()
+        XCTAssertEqual(
+            store.sceneSnapshot.items.first { $0.id == island.rootID }?.renderPosition,
+            summaryBefore
+        )
+        XCTAssertEqual(store.map.node(id: island.rootID)?.position, origins[island.rootID])
+    }
+
+    @MainActor
+    func testFocusedDeepBranchCompactsSuccessiveGenerationsAndPromotesTraversal() throws {
+        let store = try makeStore(nodes: [])
+        store.preview(.deepHierarchy)
+        store.setFilter(.all)
+        let root = try XCTUnwrap(store.map.nodes.first { $0.title == "Release Focus Space" })
+        let intelligence = try XCTUnwrap(store.map.nodes.first { $0.title == "Intelligence" })
+        let search = try XCTUnwrap(store.map.nodes.first { $0.title == "Search" })
+        let semanticZoom = try XCTUnwrap(store.map.nodes.first { $0.title == "Semantic zoom" })
+        let focusedLeaf = try XCTUnwrap(store.map.nodes.first { $0.title == "Focus selected branch" })
+
+        store.select(root.id)
+        var items = Dictionary(uniqueKeysWithValues: store.sceneSnapshot.items.map { ($0.id, $0) })
+        XCTAssertEqual(items[intelligence.id]?.presentationLevel, .full)
+        XCTAssertEqual(items[search.id]?.presentationLevel, .compact)
+        XCTAssertEqual(items[semanticZoom.id]?.presentationLevel, .silhouette)
+        XCTAssertEqual(items[focusedLeaf.id]?.presentationLevel, .silhouette)
+
+        store.select(semanticZoom.id)
+        items = Dictionary(uniqueKeysWithValues: store.sceneSnapshot.items.map { ($0.id, $0) })
+        XCTAssertEqual(items[semanticZoom.id]?.presentationLevel, .full)
+        XCTAssertEqual(items[focusedLeaf.id]?.presentationLevel, .full)
+        XCTAssertEqual(items[root.id]?.presentationLevel, .full)
+    }
+
+    @MainActor
+    func testRendererUsesProgressivelySmallerEntitiesWithoutLosingHitTargets() throws {
+        let store = try makeStore(nodes: [])
+        store.preview(.deepHierarchy)
+        store.setFilter(.all)
+        let rootNode = try XCTUnwrap(store.map.nodes.first { $0.title == "Release Focus Space" })
+        let compactNode = try XCTUnwrap(store.map.nodes.first { $0.title == "Search" })
+        let silhouetteNode = try XCTUnwrap(store.map.nodes.first { $0.title == "Semantic zoom" })
+        store.select(rootNode.id)
+        let renderer = RealityFocusRenderer(quality: .efficient)
+        let root = renderer.makeScene()
+
+        renderer.reconcile(root: root, snapshot: store.sceneSnapshot, reduceMotion: true)
+
+        let full = try XCTUnwrap(root.findEntity(named: "node-\(rootNode.id.uuidString)"))
+        let compact = try XCTUnwrap(root.findEntity(named: "node-\(compactNode.id.uuidString)"))
+        let silhouette = try XCTUnwrap(root.findEntity(named: "node-\(silhouetteNode.id.uuidString)"))
+        XCTAssertGreaterThan(full.scale.x, compact.scale.x)
+        XCTAssertGreaterThan(compact.scale.x, silhouette.scale.x)
+        XCTAssertNotNil(compact.findEntity(named: "semantic-hit-target"))
+        XCTAssertNotNil(silhouette.findEntity(named: "semantic-hit-target"))
     }
 
     @MainActor

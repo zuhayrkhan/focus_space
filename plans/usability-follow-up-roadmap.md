@@ -1,6 +1,6 @@
 # Focus Space usability follow-up roadmap
 
-Status: U1 and U2 completed on 21 July 2026; U3 awaits hands-on review
+Status: U1 and U2 completed on 21 July 2026; U3 implemented on 22 July 2026 and ready for hands-on review
 
 Scope: usability refinement only. Preserve the accepted bilateral arrangement, semantic colours, shapes, relationship curves, selection haze, and Z-as-attention model.
 
@@ -98,6 +98,8 @@ Definition of done:
 ## Milestone U3 — Semantic zoom and island navigation
 
 Priority: third; the main large-map usability investment.
+
+Completion: implemented on 22 July 2026. Presentation intent is derived in the application layer and consumed by RealityKit. Large multi-root spaces open as an Atlas of root summaries; the island navigator or direct summary selection frames one hierarchy without changing attention. Branch and Detail views retain full cards around the focus, compact second-generation descendants, and reduce deeper generations to selectable semantic silhouettes. Transitions animate scale and position, compact targets retain generous invisible hit regions, and Option-drag at Atlas level previews the summary continuously while committing the same translation to the connected map as one undoable interaction.
 
 Introduce renderer-independent presentation levels driven by camera distance and context:
 
