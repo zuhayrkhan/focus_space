@@ -58,9 +58,13 @@ final class RealityFocusRenderer {
 
         let visibleItems = snapshot.items.filter { $0.presentationLevel.isSpatiallyVisible }
         let desiredIDs = Set(visibleItems.map { $0.id.uuidString })
-        for child in root.children where child.name.hasPrefix("node-") {
+        let obsoleteNodes = root.children.filter { child in
+            guard child.name.hasPrefix("node-") else { return false }
             let id = String(child.name.dropFirst(5))
-            if !desiredIDs.contains(id) { child.removeFromParent() }
+            return !desiredIDs.contains(id)
+        }
+        for child in obsoleteNodes {
+            child.removeFromParent()
         }
 
         for item in visibleItems {
@@ -341,7 +345,7 @@ final class RealityFocusRenderer {
         item: FocusSceneSnapshot.Item,
         style: NodeVisualStyle
     ) {
-        for child in entity.children where child.name == "semantic-hit-target" {
+        for child in entity.children.filter({ $0.name == "semantic-hit-target" }) {
             child.removeFromParent()
         }
         guard item.presentationLevel.requiresExpandedHitTarget else { return }
@@ -511,7 +515,9 @@ final class RealityFocusRenderer {
         let attentionBand = Int(item.attention * 20)
         let decorationName = "decorations-\(style.silhouette)-\(style.width)-\(style.height)-\(item.kind.rawValue)-\(item.urgency.rawValue)-\(item.isEnabled)-\(item.isSelected)-\(item.isHovered)-\(item.contextRole)-\(item.presentationLevel)-\(attentionBand)-\(textScale)-\(highContrast)-\(title)-\(notes.hashValue)"
         if entity.children.contains(where: { $0.name == decorationName }) { return }
-        for child in entity.children where child.name.hasPrefix("decorations-") { child.removeFromParent() }
+        for child in entity.children.filter({ $0.name.hasPrefix("decorations-") }) {
+            child.removeFromParent()
+        }
 
         let decorations = Entity()
         decorations.name = decorationName
@@ -712,7 +718,10 @@ final class RealityFocusRenderer {
     private func reconcileRelationships(root: Entity, snapshot: FocusSceneSnapshot) {
         let byID = Dictionary(uniqueKeysWithValues: snapshot.items.map { ($0.id, $0) })
         let desiredNames = Set(snapshot.relationships.map(relationshipName))
-        for child in root.children where child.name.hasPrefix("link-") && !desiredNames.contains(child.name) {
+        let obsoleteRelationships = root.children.filter {
+            $0.name.hasPrefix("link-") && !desiredNames.contains($0.name)
+        }
+        for child in obsoleteRelationships {
             child.removeFromParent()
             relationshipKeys[child.name] = nil
         }

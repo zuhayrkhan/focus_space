@@ -452,6 +452,42 @@ final class ExperienceFoundationTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testRendererRemovesEveryOrphanWhenFocusingThePeopleAndProcessesIsland() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let store = FocusSpaceStore(
+            repository: JSONFocusMapRepository(fileURL: folder.appending(path: "map.json"))
+        )
+        store.preview(.northStar)
+        store.setFilter(.all)
+        let renderer = RealityFocusRenderer(quality: .efficient)
+        let root = renderer.makeScene()
+
+        renderer.reconcile(root: root, snapshot: store.sceneSnapshot)
+        XCTAssertGreaterThan(root.children.count { $0.name.hasPrefix("node-") }, 1)
+        XCTAssertGreaterThan(root.children.count { $0.name.hasPrefix("link-") }, 1)
+
+        let peopleAndProcesses = try XCTUnwrap(
+            store.map.nodes.first { $0.title == "People & Processes" }
+        )
+        store.select(peopleAndProcesses.id)
+        let focusedSnapshot = store.sceneSnapshot
+        renderer.reconcile(root: root, snapshot: focusedSnapshot)
+
+        let expectedNodeNames = Set(
+            focusedSnapshot.items
+                .filter { $0.presentationLevel.isSpatiallyVisible }
+                .map { "node-\($0.id.uuidString)" }
+        )
+        let renderedNodeNames = Set(
+            root.children.filter { $0.name.hasPrefix("node-") }.map(\.name)
+        )
+        XCTAssertEqual(renderedNodeNames, expectedNodeNames)
+        XCTAssertEqual(renderedNodeNames, ["node-\(peopleAndProcesses.id.uuidString)"])
+        XCTAssertTrue(focusedSnapshot.relationships.isEmpty)
+        XCTAssertFalse(root.children.contains { $0.name.hasPrefix("link-") })
+    }
+
     func testRelationshipCurvesClipNodeBodiesAndDistinguishCrossLinks() {
         let source = SIMD3<Float>(0, 0, -1)
         let target = SIMD3<Float>(3, -2, 0.5)
@@ -563,10 +599,11 @@ final class ExperienceFoundationTests: XCTestCase {
 
         let selectedID = try XCTUnwrap(store.map.nodes.first { $0.title == "Critical Now" }?.id)
         store.select(selectedID)
-        renderer.reconcile(root: root, snapshot: store.sceneSnapshot)
+        let selectedSnapshot = store.sceneSnapshot
+        renderer.reconcile(root: root, snapshot: selectedSnapshot)
         let selectedLinks = root.children.filter { $0.name.hasPrefix("link-") }
-        XCTAssertTrue(selectedLinks.contains { $0.findEntity(named: "link-glow") != nil })
-        XCTAssertTrue(selectedLinks.contains { $0.findEntity(named: "link-glow") == nil })
+        XCTAssertEqual(selectedLinks.count, selectedSnapshot.relationships.count)
+        XCTAssertTrue(selectedLinks.allSatisfy { $0.findEntity(named: "link-glow") != nil })
     }
 
     @MainActor
