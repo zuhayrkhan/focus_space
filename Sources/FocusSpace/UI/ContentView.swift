@@ -190,6 +190,7 @@ struct ContentView: View {
                         .background(store.filter == filter ? Color.accentColor.opacity(0.17) : .clear, in: .rect(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
+                .help(filterHelp(filter))
             }
             if store.hiddenNodeCount > 0 {
                 Text(hiddenThoughtsSummary)
@@ -209,6 +210,7 @@ struct ContentView: View {
                 .font(.caption)
                 Slider(value: $universeGuideOpacity, in: 0...0.22, step: 0.02)
                     .accessibilityLabel("Universe web opacity")
+                    .help("Adjust the opacity of the depth guide behind every thought")
             }
             .padding(.horizontal, 12)
             .padding(.top, 6)
@@ -222,6 +224,7 @@ struct ContentView: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
+                .help("Choose one shape language for thoughts throughout the space")
             }
             .padding(.horizontal, 12)
             .padding(.top, 6)
@@ -237,6 +240,7 @@ struct ContentView: View {
                 .font(.caption)
             }
             .toggleStyle(.switch)
+            .help("Allow dates, milestones, and reminders to suggest attention depth")
             .padding(.horizontal, 12)
             .padding(.top, 6)
             Spacer()
@@ -265,6 +269,7 @@ struct ContentView: View {
                 .lineLimit(2)
             }
             .menuStyle(.borderlessButton)
+            .help("Open a deterministic example space, or return to your personal space")
             .padding(.horizontal, 12)
         }
         .frame(minWidth: 175)
@@ -274,11 +279,17 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItemGroup {
-            Button("Undo", systemImage: "arrow.uturn.backward", action: store.undo).disabled(!store.canUndo)
-            Button("Redo", systemImage: "arrow.uturn.forward", action: store.redo).disabled(!store.canRedo)
+            Button("Undo", systemImage: "arrow.uturn.backward", action: store.undo)
+                .disabled(!store.canUndo)
+                .help("Undo the last change (Command-Z)")
+            Button("Redo", systemImage: "arrow.uturn.forward", action: store.redo)
+                .disabled(!store.canRedo)
+                .help("Redo the last undone change (Shift-Command-Z)")
             Button("Add thought", systemImage: "plus") { store.addChild(to: nil) }
+                .help("Add a new top-level thought")
             Button("Arrange mind map", systemImage: "wand.and.stars") { store.arrangeMindMap() }
                 .disabled(!store.canArrange)
+                .help("Clean up overlaps and arrange the current mind map")
             Button("Search", systemImage: "magnifyingglass") {
                 withAnimation(.spring(response: 0.35)) {
                     if store.isSearching {
@@ -289,6 +300,7 @@ struct ContentView: View {
                     }
                 }
             }
+            .help(store.isSearching ? "Close Find" : "Find a thought (Command-F)")
             if store.islandSummaries.count > 1 {
                 Menu("Islands", systemImage: "point.3.connected.trianglepath.dotted") {
                     Text("\(store.workspacePresentationLevel.rawValue.capitalized) view")
@@ -304,6 +316,7 @@ struct ContentView: View {
                         }
                     }
                 }
+                .help("Jump directly to a hierarchy island")
             }
             Button("Workspace guides", systemImage: "rectangle.3.group") {
                 if !workspaceGuidesVisible {
@@ -320,11 +333,13 @@ struct ContentView: View {
                     soundEffectsEnabled: $soundEffectsEnabled
                 )
             }
+            .help("Show workspace legend, filters, gravity, and accessibility settings")
             Button("Spatial guide", systemImage: "questionmark.circle") {
                 workspaceGuidesVisible = false
                 store.cancelSearch()
                 spatialGuideVisible = true
             }
+            .help("Open the guide to depth, hierarchy, branch movement, and gravity")
             Menu("Space file", systemImage: "externaldrive") {
                 Button("Import Space…", systemImage: "square.and.arrow.down") {
                     importerVisible = true
@@ -340,6 +355,7 @@ struct ContentView: View {
                     persistenceDiagnosticsVisible = true
                 }
             }
+            .help("Import, export, save, or inspect this space’s storage")
             if let id = store.selection {
                 Button(
                     store.isFocusModeEnabled ? "Show all branches" : "Focus selected branch",
@@ -347,8 +363,11 @@ struct ContentView: View {
                 ) {
                 withAnimation(FocusMotion.quickFade) { store.toggleFocusMode() }
                 }
+                .help(store.isFocusModeEnabled ? "Reveal every branch" : "Quiet unrelated branches and concentrate on the selection")
                 Button("Pull forward", systemImage: "arrow.up.to.line") { store.shiftAttention(id, by: 0.12) }
+                    .help("Pull the selected thought closer to increase its attention")
                 Button("Push back", systemImage: "arrow.down.to.line") { store.shiftAttention(id, by: -0.12) }
+                    .help("Push the selected thought away to decrease its attention")
             }
             Button(inspectorVisible ? "Hide inspector" : "Show inspector", systemImage: "sidebar.right") {
                 withAnimation(FocusMotion.quickSpring) {
@@ -381,6 +400,7 @@ struct ContentView: View {
                         store.selectSearchResult(by: 1)
                         return .handled
                     }
+                    .help("Type part of a thought’s title or notes, then use Return to keep the result")
                 if !store.searchText.isEmpty {
                     Text(searchResultSummary)
                         .font(.caption.monospacedDigit())
@@ -391,21 +411,25 @@ struct ContentView: View {
                         }
                         .labelStyle(.iconOnly)
                         .buttonStyle(.plain)
+                        .help("Select the previous result (Up Arrow)")
                         Button("Next result", systemImage: "chevron.down") {
                             store.selectSearchResult(by: 1)
                         }
                         .labelStyle(.iconOnly)
                         .buttonStyle(.plain)
+                        .help("Select the next result (Down Arrow)")
                     }
                     Button("Clear", systemImage: "xmark.circle.fill") {
                         store.clearSearchQuery()
                     }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.plain)
+                    .help("Clear the search text")
                 }
                 Button("Cancel") { store.cancelSearch() }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
+                    .help("Close Find and restore the previous view (Escape)")
             }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
@@ -428,6 +452,7 @@ struct ContentView: View {
                     Button(store.viewContextReturnTitle) { store.returnFromViewContext() }
                         .buttonStyle(.plain)
                         .foregroundStyle(.cyan)
+                        .help("Return to the view you had before entering this branch")
                 } else {
                     Text("Choose an island")
                         .foregroundStyle(.secondary)
@@ -451,9 +476,11 @@ struct ContentView: View {
                     Button("Show Everything") { store.showAllThoughts() }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
+                        .help("Change the filter so every thought is visible")
                     Button("Dismiss", systemImage: "xmark") { store.dismissVisibilityNotice() }
                         .labelStyle(.iconOnly)
                         .buttonStyle(.plain)
+                        .help("Dismiss this notice")
                 }
                 .font(.caption)
                 .padding(.horizontal, 12)
@@ -464,6 +491,14 @@ struct ContentView: View {
             contextualHint
         }
         .padding(14)
+    }
+
+    private func filterHelp(_ filter: FocusSpaceStore.Filter) -> String {
+        switch filter {
+        case .today: "Show thoughts currently near enough to deserve attention"
+        case .all: "Show every thought in the space"
+        case .parked: "Show only thoughts intentionally pushed into the distance"
+        }
     }
 
     @ViewBuilder
@@ -585,10 +620,12 @@ private struct RenameView: View {
                 .textFieldStyle(.roundedBorder)
                 .focused($focused)
                 .onSubmit { completeRename() }
+                .help("Enter the thought’s new name; Return saves it")
             HStack {
                 Spacer()
                 Button("Done", action: completeRename)
                     .keyboardShortcut(.defaultAction)
+                    .help("Save the new name and close")
             }
         }
         .padding(24)

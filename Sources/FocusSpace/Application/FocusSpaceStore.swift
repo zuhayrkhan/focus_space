@@ -700,6 +700,62 @@ final class FocusSpaceStore: ObservableObject {
         }
     }
 
+    func relatedNodes(for id: UUID) -> [FocusNode] {
+        guard let source = map.node(id: id) else { return [] }
+        return map.nodes
+            .filter { candidate in
+                candidate.id != id
+                    && (candidate.relatedNodeIDs.contains(id)
+                        || source.relatedNodeIDs.contains(candidate.id))
+            }
+            .sorted(by: relationshipCandidatePrecedes)
+    }
+
+    func availableRelatedNodes(for id: UUID) -> [FocusNode] {
+        guard let source = map.node(id: id) else { return [] }
+        let relatedIDs = Set(relatedNodes(for: id).map(\.id))
+        return map.nodes
+            .filter { candidate in
+                candidate.id != id
+                    && !relatedIDs.contains(candidate.id)
+                    && source.parentID != candidate.id
+                    && candidate.parentID != source.id
+            }
+            .sorted(by: relationshipCandidatePrecedes)
+    }
+
+    func addRelatedNode(_ relatedID: UUID, to id: UUID) {
+        guard availableRelatedNodes(for: id).contains(where: { $0.id == relatedID }) else { return }
+        mutate { map in
+            map.updateNode(id: id) { node in
+                node.relatedNodeIDs.insert(relatedID)
+                node.updatedAt = .now
+            }
+        }
+    }
+
+    func removeRelatedNode(_ relatedID: UUID, from id: UUID) {
+        guard id != relatedID,
+              map.node(id: id) != nil,
+              map.node(id: relatedID) != nil else { return }
+        mutate { map in
+            map.updateNode(id: id) { node in
+                node.relatedNodeIDs.remove(relatedID)
+                node.updatedAt = .now
+            }
+            map.updateNode(id: relatedID) { node in
+                node.relatedNodeIDs.remove(id)
+                node.updatedAt = .now
+            }
+        }
+    }
+
+    private func relationshipCandidatePrecedes(_ lhs: FocusNode, _ rhs: FocusNode) -> Bool {
+        let titleOrder = lhs.title.localizedStandardCompare(rhs.title)
+        if titleOrder != .orderedSame { return titleOrder == .orderedAscending }
+        return lhs.id.uuidString < rhs.id.uuidString
+    }
+
     func setUrgency(_ id: UUID, to urgency: FocusNodeUrgency) {
         mutate { $0.updateNode(id: id) { node in
             node.urgency = urgency

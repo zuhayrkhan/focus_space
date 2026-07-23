@@ -13,6 +13,7 @@ struct PersistenceDiagnosticsView: View {
                 Spacer()
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
+                    .help("Close storage details")
             }
 
             if store.recoveredFromBackup {
@@ -38,11 +39,13 @@ struct PersistenceDiagnosticsView: View {
 
             HStack {
                 Button("Save Now") { store.saveImmediately() }
+                    .help("Write the current space to its autosave location now")
                 Spacer()
                 if let url = store.storageLocations.primary {
                     Button("Show in Finder") {
                         NSWorkspace.shared.activateFileViewerSelecting([url])
                     }
+                    .help("Reveal the autosaved space in Finder")
                 }
             }
         }

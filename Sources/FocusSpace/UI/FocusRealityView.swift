@@ -440,17 +440,20 @@ struct FocusRealityView: View {
                 noteNavigationActivity()
             }
             .labelStyle(.iconOnly)
+            .help("Zoom out (Command-minus or pinch)")
             Button("Zoom in", systemImage: "plus.magnifyingglass") {
                 store.zoomCamera(by: 1.18, animated: true)
                 noteNavigationActivity()
             }
             .labelStyle(.iconOnly)
+            .help("Zoom in (Command-plus or stretch)")
             Button("Frame branch", systemImage: "viewfinder") {
                 store.frameSelection()
                 noteNavigationActivity(scheduleIdleReturn: false)
             }
             .labelStyle(.iconOnly)
             .disabled(!store.canFrameSelection)
+            .help("Frame the selected thought and its descendants")
             Button("Reset to canonical universe", systemImage: "arrow.counterclockwise") {
                 store.resetCamera()
                 noteNavigationActivity(scheduleIdleReturn: false)

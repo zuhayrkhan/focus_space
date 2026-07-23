@@ -333,6 +333,33 @@ final class ProgressiveDisclosureTests: XCTestCase {
     }
 
     @MainActor
+    func testRelatedThoughtLinksCanBeCreatedDiscoveredAndRemovedFromEitherEnd() throws {
+        let root = FocusNode(title: "Root")
+        let child = FocusNode(title: "Child", parentID: root.id)
+        let first = FocusNode(title: "First")
+        let second = FocusNode(title: "Second")
+        let store = try makeStore(nodes: [root, child, first, second])
+
+        XCTAssertFalse(store.availableRelatedNodes(for: root.id).contains { $0.id == child.id })
+        XCTAssertTrue(store.availableRelatedNodes(for: first.id).contains { $0.id == second.id })
+
+        store.addRelatedNode(second.id, to: first.id)
+
+        XCTAssertEqual(store.relatedNodes(for: first.id).map(\.id), [second.id])
+        XCTAssertEqual(store.relatedNodes(for: second.id).map(\.id), [first.id])
+        XCTAssertEqual(
+            store.sceneSnapshot.relationships.filter { $0.kind == .crossLink }.count,
+            1
+        )
+
+        store.removeRelatedNode(first.id, from: second.id)
+
+        XCTAssertTrue(store.relatedNodes(for: first.id).isEmpty)
+        XCTAssertTrue(store.relatedNodes(for: second.id).isEmpty)
+        XCTAssertTrue(store.sceneSnapshot.relationships.allSatisfy { $0.kind != .crossLink })
+    }
+
+    @MainActor
     func testFocusModeQuietsOnlyUnrelatedBranchesAndEndsOnDeselect() throws {
         let project = FocusNode(title: "Project", kind: .project)
         let child = FocusNode(title: "Child", parentID: project.id)

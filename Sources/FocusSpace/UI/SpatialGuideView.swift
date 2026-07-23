@@ -46,6 +46,7 @@ struct SpatialGuideView: View {
                                 .background(step == candidate ? Color.accentColor.opacity(0.16) : .clear, in: .rect(cornerRadius: 9))
                         }
                         .buttonStyle(.plain)
+                        .help("Show the \(candidate.title.lowercased()) guide")
                     }
                     Spacer()
                     Text("You can reopen this guide from the ? button at any time.")
@@ -70,13 +71,16 @@ struct SpatialGuideView: View {
                     HStack {
                         Button("Back") { move(by: -1) }
                             .disabled(step == .depth)
+                            .help("Go to the previous guide page")
                         Spacer()
                         if step == .gravity {
                             Button("Enter Focus Space", action: finish)
                                 .keyboardShortcut(.defaultAction)
+                                .help("Close the guide and begin arranging your space")
                         } else {
                             Button("Next") { move(by: 1) }
                                 .keyboardShortcut(.defaultAction)
+                                .help("Go to the next guide page")
                         }
                     }
                 }

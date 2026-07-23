@@ -19,6 +19,7 @@ struct NodeInspector: View {
                             Text(kind.displayName).tag(kind)
                         }
                     }
+                    .help("Choose what kind of thought this is; kind controls its colour and shape language")
                     Picker("Urgency", selection: Binding(
                         get: { store.selectedNode?.urgency ?? .none },
                         set: { store.setUrgency(node.id, to: $0) }
@@ -27,38 +28,45 @@ struct NodeInspector: View {
                             Text(urgency.displayName).tag(urgency)
                         }
                     }
+                    .help("Mark time-sensitive work so it is visually distinguishable")
                     Toggle("Active", isOn: Binding(
                         get: { store.selectedNode?.isEnabled ?? true },
                         set: { store.setEnabled(node.id, to: $0) }
                     ))
+                    .help("Inactive thoughts stay visible but are visually quiet")
                     VStack(alignment: .leading, spacing: 7) {
                         Text("Notes")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                         ZStack(alignment: .topLeading) {
-                            if node.notes.isEmpty {
-                                Text("Add context that appears on the selected card…")
-                                    .font(.callout)
-                                    .foregroundStyle(.tertiary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 8)
-                            }
                             TextEditor(text: Binding(
                                 get: { store.selectedNode?.notes ?? "" },
                                 set: { store.setNotes(node.id, to: $0) }
                             ))
                             .font(.callout)
                             .scrollContentBackground(.hidden)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 3)
                             .focused($notesFocused)
+                            .help("Add multi-line context; it appears when this thought is selected")
+                            if node.notes.isEmpty {
+                                Text("Add context that appears on the selected card…")
+                                    .font(.callout)
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 10)
+                                    .allowsHitTesting(false)
+                                    .accessibilityHidden(true)
+                            }
                         }
                         .frame(minHeight: 92, maxHeight: 128)
-                        .padding(4)
                         .background(.black.opacity(0.16), in: .rect(cornerRadius: 8))
                         .overlay { RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.10)) }
                     }
                     .onChange(of: notesFocused) { _, focused in
                         if focused { store.beginInteraction() } else { store.endInteraction() }
                     }
+                    relationshipsSection(node)
                     gravitySection(node)
                     VStack(alignment: .leading, spacing: 8) {
                         Picker("Depth stop", selection: Binding<AttentionBand?>(
@@ -76,6 +84,7 @@ struct NodeInspector: View {
                                 Text(band.displayName).tag(Optional(band))
                             }
                         }
+                        .help("Move this thought to a named attention depth")
                         HStack {
                             Text("Attention")
                             Spacer()
@@ -93,14 +102,18 @@ struct NodeInspector: View {
                             }
                         )
                         .tint(.blue)
+                        .help("Set how close this thought sits to you; closer means more attention")
                         Text(attentionDescription(node.attention))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Divider()
                     Button("Add child", systemImage: "arrow.turn.down.right") { store.addChild(to: node.id) }
+                        .help("Add a child beneath this thought")
                     Button("Duplicate", systemImage: "plus.square.on.square") { store.duplicate(node.id) }
+                        .help("Create a copy beside this thought")
                     Button("Delete", systemImage: "trash", role: .destructive) { store.delete(node.id) }
+                        .help("Delete this thought and its descendants")
                     }
                     .padding(20)
                 }
@@ -126,6 +139,63 @@ struct NodeInspector: View {
     }
 
     @ViewBuilder
+    private func relationshipsSection(_ node: FocusNode) -> some View {
+        let related = store.relatedNodes(for: node.id)
+        let available = store.availableRelatedNodes(for: node.id)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Related thoughts", systemImage: "point.2.filled.connected.trianglepath.dotted")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Menu("Add relationship", systemImage: "link.badge.plus") {
+                    if available.isEmpty {
+                        Text("No other thoughts available")
+                    } else {
+                        ForEach(available) { candidate in
+                            Button(candidate.title) {
+                                store.addRelatedNode(candidate.id, to: node.id)
+                            }
+                        }
+                    }
+                }
+                .labelStyle(.iconOnly)
+                .menuStyle(.borderlessButton)
+                .help("Create a dashed purple “related to” link without changing the hierarchy")
+                .disabled(available.isEmpty)
+            }
+            if related.isEmpty {
+                Text("No cross-links. Add one to connect ideas outside the parent–child hierarchy.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            } else {
+                ForEach(related) { candidate in
+                    HStack(spacing: 8) {
+                        Button(candidate.title) {
+                            store.select(candidate.id)
+                        }
+                        .buttonStyle(.link)
+                        .lineLimit(1)
+                        .help("Select \(candidate.title)")
+                        Spacer()
+                        Button("Remove relationship", systemImage: "xmark") {
+                            store.removeRelatedNode(candidate.id, from: node.id)
+                        }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("Remove the related-thought link to \(candidate.title)")
+                    }
+                    .font(.caption)
+                }
+            }
+            Text("Dashed purple lines mean “related to”; solid blue lines show parent and child.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    @ViewBuilder
     private func gravitySection(_ node: FocusNode) -> some View {
         let assessment = store.gravityAssessment(for: node)
         DisclosureGroup {
@@ -138,6 +208,7 @@ struct NodeInspector: View {
                         Text(preference.displayName).tag(preference)
                     }
                 }
+                .help("Choose whether time signals may suggest this thought’s depth")
                 OptionalDateRow(
                     title: "Due date",
                     value: Binding(
@@ -178,6 +249,7 @@ struct NodeInspector: View {
                             store.releaseManualGravityOverride(node.id)
                         }
                         .buttonStyle(.link)
+                        .help("End the seven-day manual-depth hold and apply gravity immediately")
                     }
                 }
                 .font(.caption)
@@ -203,6 +275,7 @@ private struct OptionalDateRow: View {
                     value = enabled ? Date.now.addingTimeInterval(defaultOffset) : nil
                 }
             ))
+            .help(value == nil ? "Add a \(title.lowercased())" : "Remove this \(title.lowercased())")
             if value != nil {
                 DatePicker(
                     title,
@@ -213,6 +286,7 @@ private struct OptionalDateRow: View {
                     displayedComponents: [.date, .hourAndMinute]
                 )
                 .labelsHidden()
+                .help("Choose the \(title.lowercased())")
             }
         }
     }

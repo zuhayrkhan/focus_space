@@ -4,6 +4,8 @@
 
 Milestone 3 turns relationships into spatial structure rather than metadata drawn as straight lines. The renderer consumes explicit relationship snapshots; RealityKit remains an implementation detail.
 
+Solid blue curves show parent–child hierarchy. Dashed purple curves are cross-links: they mean two thoughts are related without making either one the parent. Select a thought and use **Related thoughts → Add relationship** in the inspector to create one; the same section can navigate to or remove existing cross-links.
+
 ![Accepted deep relationship composition](reference/milestone-3-relationships.png)
 
 ## Relationship contract
