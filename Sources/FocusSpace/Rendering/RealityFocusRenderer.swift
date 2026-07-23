@@ -344,7 +344,7 @@ final class RealityFocusRenderer {
         for child in entity.children where child.name == "semantic-hit-target" {
             child.removeFromParent()
         }
-        guard item.presentationLevel == .compact || item.presentationLevel == .silhouette else { return }
+        guard item.presentationLevel.requiresExpandedHitTarget else { return }
         let inverseScale = 1 / max(item.presentationLevel.scale, 0.01)
         let target = Entity()
         target.name = "semantic-hit-target"
@@ -502,7 +502,7 @@ final class RealityFocusRenderer {
         }
         let title = NodeLabelLayout.displayTitle(
             item.title,
-            maximumCharacters: item.presentationLevel == .compact ? 24 : 38,
+            maximumCharacters: item.presentationLevel.maximumLabelCharacters,
             singleLineLimit: singleLineLimit
         )
         let notes = NodeNotesLayout.displayText(item.presentationSummary ?? item.notes)
@@ -526,11 +526,11 @@ final class RealityFocusRenderer {
         ))
 
         let font = NSFont.systemFont(
-            ofSize: 0.13 * CGFloat(textScale),
+            ofSize: 0.13 * CGFloat(textScale) * item.presentationLevel.labelScale,
             weight: item.isSelected ? .semibold : .medium
         )
         let mesh = MeshResource.generateText(
-            item.presentationLevel == .silhouette ? "" : title,
+            title,
             extrusionDepth: 0.002,
             font: font,
             containerFrame: CGRect(
@@ -542,9 +542,10 @@ final class RealityFocusRenderer {
             alignment: .center,
             lineBreakMode: .byTruncatingTail
         )
-        let labelAlpha = item.isDimmed
+        let baseLabelAlpha = item.isDimmed
             ? (highContrast ? 0.38 : 0.2)
             : (highContrast ? 1 : 0.76 + item.attention * 0.24)
+        let labelAlpha = baseLabelAlpha * item.presentationLevel.labelOpacity
         let material = UnlitMaterial(color: NSColor(white: 0.98, alpha: labelAlpha))
         let label = ModelEntity(mesh: mesh, materials: [material])
         label.name = "node-label"
@@ -595,7 +596,7 @@ final class RealityFocusRenderer {
         }
 
         let glyph = makeGlyph(
-            item.presentationLevel == .silhouette ? "" : style.glyph,
+            item.presentationLevel.showsKindGlyph ? style.glyph : "",
             size: 0.12,
             color: NSColor(white: 1, alpha: 0.9),
             name: "kind-glyph"

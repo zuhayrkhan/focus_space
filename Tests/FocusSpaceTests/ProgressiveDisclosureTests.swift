@@ -279,8 +279,8 @@ final class ProgressiveDisclosureTests: XCTestCase {
         var items = Dictionary(uniqueKeysWithValues: store.sceneSnapshot.items.map { ($0.id, $0) })
         XCTAssertEqual(items[intelligence.id]?.presentationLevel, .full)
         XCTAssertEqual(items[search.id]?.presentationLevel, .compact)
-        XCTAssertEqual(items[semanticZoom.id]?.presentationLevel, .silhouette)
-        XCTAssertEqual(items[focusedLeaf.id]?.presentationLevel, .silhouette)
+        XCTAssertEqual(items[semanticZoom.id]?.presentationLevel, .reduced)
+        XCTAssertEqual(items[focusedLeaf.id]?.presentationLevel, .miniature)
 
         store.select(semanticZoom.id)
         items = Dictionary(uniqueKeysWithValues: store.sceneSnapshot.items.map { ($0.id, $0) })
@@ -296,7 +296,8 @@ final class ProgressiveDisclosureTests: XCTestCase {
         store.setFilter(.all)
         let rootNode = try XCTUnwrap(store.map.nodes.first { $0.title == "Release Focus Space" })
         let compactNode = try XCTUnwrap(store.map.nodes.first { $0.title == "Search" })
-        let silhouetteNode = try XCTUnwrap(store.map.nodes.first { $0.title == "Semantic zoom" })
+        let reducedNode = try XCTUnwrap(store.map.nodes.first { $0.title == "Semantic zoom" })
+        let miniatureNode = try XCTUnwrap(store.map.nodes.first { $0.title == "Focus selected branch" })
         store.select(rootNode.id)
         let renderer = RealityFocusRenderer(quality: .efficient)
         let root = renderer.makeScene()
@@ -305,11 +306,30 @@ final class ProgressiveDisclosureTests: XCTestCase {
 
         let full = try XCTUnwrap(root.findEntity(named: "node-\(rootNode.id.uuidString)"))
         let compact = try XCTUnwrap(root.findEntity(named: "node-\(compactNode.id.uuidString)"))
-        let silhouette = try XCTUnwrap(root.findEntity(named: "node-\(silhouetteNode.id.uuidString)"))
+        let reduced = try XCTUnwrap(root.findEntity(named: "node-\(reducedNode.id.uuidString)"))
+        let miniature = try XCTUnwrap(root.findEntity(named: "node-\(miniatureNode.id.uuidString)"))
         XCTAssertGreaterThan(full.scale.x, compact.scale.x)
-        XCTAssertGreaterThan(compact.scale.x, silhouette.scale.x)
+        XCTAssertGreaterThan(compact.scale.x, reduced.scale.x)
+        XCTAssertGreaterThan(reduced.scale.x, miniature.scale.x)
         XCTAssertNotNil(compact.findEntity(named: "semantic-hit-target"))
-        XCTAssertNotNil(silhouette.findEntity(named: "semantic-hit-target"))
+        XCTAssertNotNil(reduced.findEntity(named: "semantic-hit-target"))
+        XCTAssertNotNil(miniature.findEntity(named: "semantic-hit-target"))
+        for node in [full, compact, reduced, miniature] {
+            let label = try XCTUnwrap(node.findEntity(named: "node-label"))
+            XCTAssertGreaterThan(label.visualBounds(relativeTo: label).extents.x, 0)
+        }
+    }
+
+    func testPresentationLevelsTaperScaleAndTextAcrossFiveVisibleStages() {
+        let levels: [NodePresentationLevel] = [.full, .compact, .reduced, .miniature, .silhouette]
+
+        XCTAssertEqual(Set(levels.map(\.maximumLabelCharacters)).count, levels.count)
+        for pair in zip(levels, levels.dropFirst()) {
+            XCTAssertGreaterThan(pair.0.scale, pair.1.scale)
+            XCTAssertGreaterThan(pair.0.labelScale, pair.1.labelScale)
+            XCTAssertGreaterThan(pair.0.labelOpacity, pair.1.labelOpacity)
+            XCTAssertGreaterThan(pair.0.maximumLabelCharacters, pair.1.maximumLabelCharacters)
+        }
     }
 
     @MainActor

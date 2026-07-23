@@ -9,6 +9,8 @@ enum WorkspacePresentationLevel: String, Equatable, Sendable {
 enum NodePresentationLevel: String, Equatable, Sendable {
     case hidden
     case silhouette
+    case miniature
+    case reduced
     case compact
     case full
     case atlas
@@ -19,9 +21,58 @@ enum NodePresentationLevel: String, Equatable, Sendable {
         switch self {
         case .hidden: 0
         case .silhouette: 0.50
-        case .compact: 0.68
+        case .miniature: 0.59
+        case .reduced: 0.70
+        case .compact: 0.84
         case .full: 1
         case .atlas: 0.88
+        }
+    }
+
+    var labelScale: CGFloat {
+        switch self {
+        case .hidden: 0
+        case .silhouette: 0.78
+        case .miniature: 0.84
+        case .reduced: 0.90
+        case .compact: 0.96
+        case .full, .atlas: 1
+        }
+    }
+
+    var labelOpacity: Double {
+        switch self {
+        case .hidden: 0
+        case .silhouette: 0.36
+        case .miniature: 0.54
+        case .reduced: 0.72
+        case .compact: 0.88
+        case .full, .atlas: 1
+        }
+    }
+
+    var maximumLabelCharacters: Int {
+        switch self {
+        case .hidden: 0
+        case .silhouette: 14
+        case .miniature: 18
+        case .reduced: 24
+        case .compact: 30
+        case .full, .atlas: 38
+        }
+    }
+
+    var showsKindGlyph: Bool {
+        switch self {
+        case .hidden, .silhouette, .miniature: false
+        case .reduced, .compact, .full, .atlas: true
+        }
+    }
+
+    var requiresExpandedHitTarget: Bool {
+        switch self {
+        case .silhouette, .miniature, .reduced, .compact: true
+        case .hidden, .full, .atlas: false
         }
     }
 }
@@ -141,6 +192,8 @@ struct SpatialPresentation: Equatable, Sendable {
             switch generation {
             case 1: return .full
             case 2: return .compact
+            case 3: return .reduced
+            case 4: return .miniature
             default: return .silhouette
             }
         }
@@ -162,9 +215,20 @@ struct SpatialPresentation: Equatable, Sendable {
             return node.parentID == nil ? .atlas : .hidden
         case .branch:
             if depth <= 1 { return .full }
-            return depth == 2 ? .compact : .silhouette
+            switch depth {
+            case 2: return .compact
+            case 3: return .reduced
+            case 4: return .miniature
+            default: return .silhouette
+            }
         case .detail:
-            return depth <= 2 ? .full : .compact
+            switch depth {
+            case ...2: return .full
+            case 3: return .compact
+            case 4: return .reduced
+            case 5: return .miniature
+            default: return .silhouette
+            }
         }
     }
 

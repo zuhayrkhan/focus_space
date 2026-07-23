@@ -10,8 +10,8 @@ Implemented on 22 July 2026 and ready for hands-on review.
 - The toolbar **Islands** menu provides a concise, graph-derived route to every hierarchy root.
 - **Branch** and **Detail** presentation levels are derived outside RealityKit.
 - The focused thought, its ancestors, and its immediate children remain full cards.
-- Descendants two generations away become compact cards.
-- Descendants three or more generations away become semantic silhouettes.
+- Descendants taper through five labelled visual levels: full, compact, reduced, miniature, and distant.
+- Labels become progressively smaller, shorter, and dimmer over four to five generations rather than disappearing abruptly.
 - Selecting a descendant promotes its local family smoothly to full cards.
 - Compact nodes retain enlarged invisible hit targets.
 - Option-dragging an Atlas summary moves its connected map, previews continuously, and remains one-step undoable.
@@ -32,9 +32,10 @@ Implemented on 22 July 2026 and ready for hands-on review.
 
 1. Open **Experience previews → Deep hierarchy**.
 2. Select **Release Focus Space**.
-3. Its immediate children should remain full cards, the next generation should be compact, and deeper descendants should be smaller silhouettes.
-4. Select **Semantic zoom**; it and **Focus selected branch** should promote to full cards without a visual pop.
-5. Confirm compact shapes remain easy to click despite their smaller visible size.
+3. Its immediate children should remain full cards. Later generations should step smoothly through compact, reduced, miniature, and distant cards.
+4. Confirm every visible generation still has a readable label, with progressively smaller and quieter text.
+5. Select **Semantic zoom**; it and **Focus selected branch** should promote to full cards without a visual pop.
+6. Confirm every reduced shape remains easy to click despite its smaller visible size.
 
 ### Command–F
 
