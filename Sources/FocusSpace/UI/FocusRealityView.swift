@@ -433,33 +433,33 @@ struct FocusRealityView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 6)
-                .help("Drag to orbit; two-finger drag to pan, or move vertically over a thought to shift its branch in depth")
+                .focusHelp("Drag to orbit; two-finger drag to pan, or move vertically over a thought to shift its branch in depth")
             Divider().frame(height: 22)
             Button("Zoom out", systemImage: "minus.magnifyingglass") {
                 store.zoomCamera(by: 0.84, animated: true)
                 noteNavigationActivity()
             }
             .labelStyle(.iconOnly)
-            .help("Zoom out (Command-minus or pinch)")
+            .focusHelp("Zoom out; you can also pinch", shortcut: "⌘−")
             Button("Zoom in", systemImage: "plus.magnifyingglass") {
                 store.zoomCamera(by: 1.18, animated: true)
                 noteNavigationActivity()
             }
             .labelStyle(.iconOnly)
-            .help("Zoom in (Command-plus or stretch)")
+            .focusHelp("Zoom in; you can also stretch", shortcut: "⌘+")
             Button("Frame branch", systemImage: "viewfinder") {
                 store.frameSelection()
                 noteNavigationActivity(scheduleIdleReturn: false)
             }
             .labelStyle(.iconOnly)
             .disabled(!store.canFrameSelection)
-            .help("Frame the selected thought and its descendants")
+            .focusHelp("Frame the selected thought and its descendants")
             Button("Reset to canonical universe", systemImage: "arrow.counterclockwise") {
                 store.resetCamera()
                 noteNavigationActivity(scheduleIdleReturn: false)
             }
             .labelStyle(.iconOnly)
-            .help("Reset to the canonical universe view (Command-0)")
+            .focusHelp("Reset to the canonical universe view", shortcut: "⌘0")
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
@@ -528,7 +528,7 @@ struct FocusRealityView: View {
                     }
                 }
         )
-        .help("Drag the colour key toward any corner to dock it there")
+        .focusHelp("Drag the colour key toward any corner to dock it there")
     }
 
     private var legendCorner: LegendCorner {

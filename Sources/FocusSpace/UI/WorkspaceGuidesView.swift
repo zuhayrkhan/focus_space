@@ -22,7 +22,7 @@ struct WorkspaceGuidesView: View {
                         }
                         Toggle("Floating colour key", isOn: $colourKeyVisible)
                             .padding(.top, 4)
-                            .help("Show or hide the movable colour key on the universe")
+                            .focusHelp("Show or hide the movable colour key on the universe")
                     }
                     .font(.caption)
                     .padding(.top, 8)
@@ -57,7 +57,7 @@ struct WorkspaceGuidesView: View {
                     }
                     .pickerStyle(.radioGroup)
                     .padding(.top, 8)
-                    .help("Choose which attention range is visible")
+                    .focusHelp("Choose which attention range is visible")
                 }
 
                 DisclosureGroup("Time flow") {
@@ -69,7 +69,7 @@ struct WorkspaceGuidesView: View {
                             get: { store.map.isGravityEnabled },
                             set: store.setGravityEnabled
                         ))
-                        .help("Allow time signals to suggest attention depth across the workspace")
+                        .focusHelp("Allow time signals to suggest attention depth across the workspace")
                     }
                     .padding(.top, 8)
                 }
@@ -77,7 +77,7 @@ struct WorkspaceGuidesView: View {
                 DisclosureGroup("Accessibility & display") {
                     VStack(alignment: .leading, spacing: 8) {
                         Toggle("Use accessible list view", isOn: $preferAccessibleList)
-                            .help("Replace the 3D universe with a keyboard- and VoiceOver-friendly list")
+                            .focusHelp("Replace the 3D universe with a keyboard- and VoiceOver-friendly list")
                         Text("A keyboard- and VoiceOver-friendly 2D view using the same map and attention values.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -92,7 +92,7 @@ struct WorkspaceGuidesView: View {
                 DisclosureGroup("Sound & motion") {
                     VStack(alignment: .leading, spacing: 8) {
                         Toggle("Subtle interaction sounds", isOn: $soundEffectsEnabled)
-                            .help("Play quiet cues for selection and depth changes")
+                            .focusHelp("Play quiet cues for selection and depth changes")
                         Text("Quiet selection and depth cues. Off by default; system Reduce Motion is always respected.")
                             .font(.caption)
                             .foregroundStyle(.secondary)

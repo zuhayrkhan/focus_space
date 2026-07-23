@@ -15,10 +15,10 @@ struct EmptySpaceView: View {
                 .foregroundStyle(.secondary)
             HStack {
                 Button("Import a space", action: importSpace)
-                    .help("Open an exported Focus Space JSON file")
+                    .focusHelp("Open an exported Focus Space JSON file")
                 Button("Add first thought", action: addFirstThought)
                     .buttonStyle(.borderedProminent)
-                    .help("Create the first top-level thought")
+                    .focusHelp("Create the first top-level thought")
             }
         }
         .padding(30)

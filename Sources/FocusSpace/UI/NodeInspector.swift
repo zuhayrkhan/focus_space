@@ -1,8 +1,8 @@
+import AppKit
 import SwiftUI
 
 struct NodeInspector: View {
     @ObservedObject var store: FocusSpaceStore
-    @FocusState private var notesFocused: Bool
 
     var body: some View {
         Group {
@@ -19,7 +19,7 @@ struct NodeInspector: View {
                             Text(kind.displayName).tag(kind)
                         }
                     }
-                    .help("Choose what kind of thought this is; kind controls its colour and shape language")
+                    .focusHelp("Choose what kind of thought this is; kind controls its colour and shape language")
                     Picker("Urgency", selection: Binding(
                         get: { store.selectedNode?.urgency ?? .none },
                         set: { store.setUrgency(node.id, to: $0) }
@@ -28,27 +28,24 @@ struct NodeInspector: View {
                             Text(urgency.displayName).tag(urgency)
                         }
                     }
-                    .help("Mark time-sensitive work so it is visually distinguishable")
+                    .focusHelp("Mark time-sensitive work so it is visually distinguishable")
                     Toggle("Active", isOn: Binding(
                         get: { store.selectedNode?.isEnabled ?? true },
                         set: { store.setEnabled(node.id, to: $0) }
                     ))
-                    .help("Inactive thoughts stay visible but are visually quiet")
+                    .focusHelp("Inactive thoughts stay visible but are visually quiet")
                     VStack(alignment: .leading, spacing: 7) {
                         Text("Notes")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                         ZStack(alignment: .topLeading) {
-                            TextEditor(text: Binding(
+                            InsetNotesEditor(text: Binding(
                                 get: { store.selectedNode?.notes ?? "" },
                                 set: { store.setNotes(node.id, to: $0) }
-                            ))
-                            .font(.callout)
-                            .scrollContentBackground(.hidden)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 3)
-                            .focused($notesFocused)
-                            .help("Add multi-line context; it appears when this thought is selected")
+                            )) { focused in
+                                if focused { store.beginInteraction() } else { store.endInteraction() }
+                            }
+                            .focusHelp("Add multi-line context; it appears when this thought is selected")
                             if node.notes.isEmpty {
                                 Text("Add context that appears on the selected card…")
                                     .font(.callout)
@@ -62,9 +59,6 @@ struct NodeInspector: View {
                         .frame(minHeight: 92, maxHeight: 128)
                         .background(.black.opacity(0.16), in: .rect(cornerRadius: 8))
                         .overlay { RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.10)) }
-                    }
-                    .onChange(of: notesFocused) { _, focused in
-                        if focused { store.beginInteraction() } else { store.endInteraction() }
                     }
                     relationshipsSection(node)
                     gravitySection(node)
@@ -84,7 +78,7 @@ struct NodeInspector: View {
                                 Text(band.displayName).tag(Optional(band))
                             }
                         }
-                        .help("Move this thought to a named attention depth")
+                        .focusHelp("Move this thought to a named attention depth")
                         HStack {
                             Text("Attention")
                             Spacer()
@@ -102,18 +96,18 @@ struct NodeInspector: View {
                             }
                         )
                         .tint(.blue)
-                        .help("Set how close this thought sits to you; closer means more attention")
+                        .focusHelp("Set how close this thought sits to you; closer means more attention")
                         Text(attentionDescription(node.attention))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Divider()
                     Button("Add child", systemImage: "arrow.turn.down.right") { store.addChild(to: node.id) }
-                        .help("Add a child beneath this thought")
+                        .focusHelp("Add a child beneath this thought")
                     Button("Duplicate", systemImage: "plus.square.on.square") { store.duplicate(node.id) }
-                        .help("Create a copy beside this thought")
+                        .focusHelp("Create a copy beside this thought")
                     Button("Delete", systemImage: "trash", role: .destructive) { store.delete(node.id) }
-                        .help("Delete this thought and its descendants")
+                        .focusHelp("Delete this thought and its descendants")
                     }
                     .padding(20)
                 }
@@ -161,7 +155,7 @@ struct NodeInspector: View {
                 }
                 .labelStyle(.iconOnly)
                 .menuStyle(.borderlessButton)
-                .help("Create a dashed purple “related to” link without changing the hierarchy")
+                .focusHelp("Create a dashed purple “related to” link without changing the hierarchy")
                 .disabled(available.isEmpty)
             }
             if related.isEmpty {
@@ -176,7 +170,7 @@ struct NodeInspector: View {
                         }
                         .buttonStyle(.link)
                         .lineLimit(1)
-                        .help("Select \(candidate.title)")
+                        .focusHelp("Select \(candidate.title)")
                         Spacer()
                         Button("Remove relationship", systemImage: "xmark") {
                             store.removeRelatedNode(candidate.id, from: node.id)
@@ -184,7 +178,7 @@ struct NodeInspector: View {
                         .labelStyle(.iconOnly)
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
-                        .help("Remove the related-thought link to \(candidate.title)")
+                        .focusHelp("Remove the related-thought link to \(candidate.title)")
                     }
                     .font(.caption)
                 }
@@ -208,7 +202,7 @@ struct NodeInspector: View {
                         Text(preference.displayName).tag(preference)
                     }
                 }
-                .help("Choose whether time signals may suggest this thought’s depth")
+                .focusHelp("Choose whether time signals may suggest this thought’s depth")
                 OptionalDateRow(
                     title: "Due date",
                     value: Binding(
@@ -249,7 +243,7 @@ struct NodeInspector: View {
                             store.releaseManualGravityOverride(node.id)
                         }
                         .buttonStyle(.link)
-                        .help("End the seven-day manual-depth hold and apply gravity immediately")
+                        .focusHelp("End the seven-day manual-depth hold and apply gravity immediately")
                     }
                 }
                 .font(.caption)
@@ -258,6 +252,86 @@ struct NodeInspector: View {
         } label: {
             Label("Gravity & time", systemImage: assessment.isInfluencing ? "clock.badge.exclamationmark" : "clock")
                 .font(.callout.weight(.semibold))
+        }
+    }
+}
+
+private struct InsetNotesEditor: NSViewRepresentable {
+    @Binding var text: String
+    let onFocusChange: (Bool) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+
+        let textView = NSTextView()
+        textView.delegate = context.coordinator
+        textView.string = text
+        textView.font = .systemFont(ofSize: NSFont.systemFontSize)
+        textView.textColor = .labelColor
+        textView.insertionPointColor = .controlAccentColor
+        textView.backgroundColor = .clear
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.allowsUndo = true
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainerInset = NSSize(width: 9, height: 10)
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(
+            width: scrollView.contentSize.width,
+            height: .greatestFiniteMagnitude
+        )
+        textView.setAccessibilityLabel("Notes")
+        textView.setAccessibilityHelp("Add multi-line context; it appears when this thought is selected")
+        scrollView.documentView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        context.coordinator.parent = self
+        guard let textView = scrollView.documentView as? NSTextView,
+              textView.string != text else { return }
+        let selectedRanges = textView.selectedRanges
+        textView.string = text
+        let validRanges = selectedRanges.filter {
+            NSMaxRange($0.rangeValue) <= (text as NSString).length
+        }
+        if validRanges.isEmpty {
+            textView.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
+        } else {
+            textView.selectedRanges = validRanges
+        }
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: InsetNotesEditor
+
+        init(_ parent: InsetNotesEditor) {
+            self.parent = parent
+        }
+
+        func textDidBeginEditing(_ notification: Notification) {
+            parent.onFocusChange(true)
+        }
+
+        func textDidEndEditing(_ notification: Notification) {
+            parent.onFocusChange(false)
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            parent.text = textView.string
         }
     }
 }
@@ -275,7 +349,7 @@ private struct OptionalDateRow: View {
                     value = enabled ? Date.now.addingTimeInterval(defaultOffset) : nil
                 }
             ))
-            .help(value == nil ? "Add a \(title.lowercased())" : "Remove this \(title.lowercased())")
+            .focusHelp(value == nil ? "Add a \(title.lowercased())" : "Remove this \(title.lowercased())")
             if value != nil {
                 DatePicker(
                     title,
@@ -286,7 +360,7 @@ private struct OptionalDateRow: View {
                     displayedComponents: [.date, .hourAndMinute]
                 )
                 .labelsHidden()
-                .help("Choose the \(title.lowercased())")
+                .focusHelp("Choose the \(title.lowercased())")
             }
         }
     }
