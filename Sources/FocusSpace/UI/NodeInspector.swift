@@ -34,6 +34,23 @@ struct NodeInspector: View {
                         set: { store.setEnabled(node.id, to: $0) }
                     ))
                     .focusHelp("Inactive thoughts stay visible but are visually quiet")
+                    HStack(spacing: 8) {
+                        Label(
+                            node.placementPolicy == .automatic ? "Arranged automatically" : "Positioned by you",
+                            systemImage: node.placementPolicy == .automatic ? "wand.and.stars" : "hand.draw"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        Spacer()
+                        if node.placementPolicy == .manual {
+                            Button("Use automatic placement", systemImage: "arrow.uturn.backward.circle") {
+                                store.useAutomaticPlacement(node.id)
+                            }
+                            .labelStyle(.iconOnly)
+                            .buttonStyle(.plain)
+                            .focusHelp("Let Focus Space place this thought automatically again")
+                        }
+                    }
                     VStack(alignment: .leading, spacing: 7) {
                         Text("Notes")
                             .font(.caption.weight(.semibold))

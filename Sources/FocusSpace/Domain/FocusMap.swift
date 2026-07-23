@@ -1,7 +1,7 @@
 import Foundation
 
 struct FocusMap: Codable, Equatable, Sendable {
-    static let currentVersion = 4
+    static let currentVersion = 5
 
     private(set) var version = Self.currentVersion
     var title: String

@@ -362,6 +362,7 @@ enum DemoScene: String, CaseIterable, Identifiable, Sendable {
                 notes: specification.notes,
                 kind: specification.kind,
                 position: SpatialPoint(x: specification.x, y: specification.y),
+                placementPolicy: .automatic,
                 attention: specification.attention,
                 parentID: specification.parentIndex.map { ids[$0] },
                 relatedNodeIDs: Set(specification.relatedIndices.map { ids[$0] }),

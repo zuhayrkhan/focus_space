@@ -1,9 +1,21 @@
 import Foundation
 
 struct MindMapArranger {
-    private static let horizontalSpacing = 2.05
-    private static let verticalSpacing = 0.94
-    private static let branchGap = 0.34
+    private static let horizontalSpacing = 2.25
+    private static let verticalSpacing = 1.28
+    private static let branchGap = 0.48
+    private static let collisionStep = SpatialPoint(x: 0.28, y: 0.24)
+
+    private struct LayoutRect {
+        let centre: SpatialPoint
+        let width: Double
+        let height: Double
+
+        func intersects(_ other: Self) -> Bool {
+            abs(centre.x - other.centre.x) < (width + other.width) / 2
+                && abs(centre.y - other.centre.y) < (height + other.height) / 2
+        }
+    }
 
     static func positions(for map: FocusMap) -> [UUID: SpatialPoint] {
         guard !map.nodes.isEmpty else { return [:] }
@@ -31,6 +43,67 @@ struct MindMapArranger {
             islands.append(island)
         }
         return pack(islands: islands)
+    }
+
+    /// Keeps hand-positioned nodes fixed and moves only automatically placed nodes.
+    ///
+    /// `preferredPositions` is supplied by the explicit Arrange action. Everyday edits omit it,
+    /// so the collision pass disturbs the current composition as little as possible.
+    static func nonOverlappingPositions(
+        for map: FocusMap,
+        preferredPositions: [UUID: SpatialPoint]? = nil
+    ) -> [UUID: SpatialPoint] {
+        guard !map.nodes.isEmpty else { return [:] }
+        let preferred = preferredPositions ?? Dictionary(
+            uniqueKeysWithValues: map.nodes.map { ($0.id, $0.position) }
+        )
+        let manualNodes = map.nodes.filter { $0.placementPolicy == .manual }
+        let automaticNodes = map.nodes
+            .filter { $0.placementPolicy == .automatic }
+            .sorted { lhs, rhs in
+                let lhsDepth = map.ancestors(of: lhs.id).count
+                let rhsDepth = map.ancestors(of: rhs.id).count
+                if lhsDepth != rhsDepth { return lhsDepth < rhsDepth }
+                return nodeComesBefore(lhs, rhs)
+            }
+
+        var result = Dictionary(
+            uniqueKeysWithValues: manualNodes.map { ($0.id, $0.position) }
+        )
+        var occupied = manualNodes.map {
+            layoutRect(for: $0, at: $0.position)
+        }
+
+        for node in automaticNodes {
+            let origin = preferred[node.id] ?? node.position
+            let position = nearestAvailablePosition(
+                for: node,
+                around: origin,
+                occupied: occupied
+            )
+            result[node.id] = position
+            occupied.append(layoutRect(for: node, at: position))
+        }
+        return result
+    }
+
+    static func hasOverlaps(
+        in map: FocusMap,
+        positions: [UUID: SpatialPoint]? = nil
+    ) -> Bool {
+        let positions = positions ?? Dictionary(
+            uniqueKeysWithValues: map.nodes.map { ($0.id, $0.position) }
+        )
+        let rects = map.nodes.compactMap { node -> LayoutRect? in
+            guard let position = positions[node.id] else { return nil }
+            return layoutRect(for: node, at: position)
+        }
+        for lhsIndex in rects.indices {
+            for rhsIndex in rects.indices where rhsIndex > lhsIndex {
+                if rects[lhsIndex].intersects(rects[rhsIndex]) { return true }
+            }
+        }
+        return false
     }
 
     static func positionForNewChild(in map: FocusMap, parentID: UUID?) -> SpatialPoint {
@@ -246,8 +319,8 @@ struct MindMapArranger {
 
     private static func gridPositions(for nodes: [FocusNode]) -> [UUID: SpatialPoint] {
         let columns = min(6, max(1, Int(ceil(sqrt(Double(nodes.count))))))
-        let horizontalSpacing = 1.72
-        let verticalSpacing = 0.96
+        let horizontalSpacing = 2.1
+        let verticalSpacing = 1.42
         return Dictionary(uniqueKeysWithValues: nodes.enumerated().map { index, node in
             let column = index % columns
             let row = index / columns
@@ -261,5 +334,108 @@ struct MindMapArranger {
                 )
             )
         })
+    }
+
+    private static func nearestAvailablePosition(
+        for node: FocusNode,
+        around origin: SpatialPoint,
+        occupied: [LayoutRect]
+    ) -> SpatialPoint {
+        if isAvailable(origin, for: node, occupied: occupied) { return origin }
+
+        for radius in 1...48 {
+            var candidates: [SpatialPoint] = []
+            for horizontalIndex in -radius...radius {
+                let verticalIndex = radius - abs(horizontalIndex)
+                candidates.append(
+                    offset(
+                        origin,
+                        horizontalIndex: horizontalIndex,
+                        verticalIndex: verticalIndex
+                    )
+                )
+                if verticalIndex != 0 {
+                    candidates.append(
+                        offset(
+                            origin,
+                            horizontalIndex: horizontalIndex,
+                            verticalIndex: -verticalIndex
+                        )
+                    )
+                }
+            }
+            candidates.sort { lhs, rhs in
+                let lhsDistance = squaredDistance(from: lhs, to: origin)
+                let rhsDistance = squaredDistance(from: rhs, to: origin)
+                if lhsDistance != rhsDistance { return lhsDistance < rhsDistance }
+                let lhsHorizontal = abs(lhs.x - origin.x)
+                let rhsHorizontal = abs(rhs.x - origin.x)
+                if lhsHorizontal != rhsHorizontal { return lhsHorizontal < rhsHorizontal }
+                if lhs.y != rhs.y { return lhs.y > rhs.y }
+                return lhs.x < rhs.x
+            }
+            if let available = candidates.first(where: {
+                isAvailable($0, for: node, occupied: occupied)
+            }) {
+                return available
+            }
+        }
+
+        let rightEdge = occupied.map { $0.centre.x + $0.width / 2 }.max() ?? origin.x
+        let footprint = layoutFootprint(for: node)
+        return SpatialPoint(
+            x: rightEdge + footprint.width / 2 + 0.24,
+            y: origin.y
+        )
+    }
+
+    private static func isAvailable(
+        _ position: SpatialPoint,
+        for node: FocusNode,
+        occupied: [LayoutRect]
+    ) -> Bool {
+        let candidate = layoutRect(for: node, at: position)
+        return occupied.allSatisfy { !candidate.intersects($0) }
+    }
+
+    private static func offset(
+        _ origin: SpatialPoint,
+        horizontalIndex: Int,
+        verticalIndex: Int
+    ) -> SpatialPoint {
+        SpatialPoint(
+            x: origin.x + Double(horizontalIndex) * collisionStep.x,
+            y: origin.y + Double(verticalIndex) * collisionStep.y
+        )
+    }
+
+    private static func squaredDistance(
+        from lhs: SpatialPoint,
+        to rhs: SpatialPoint
+    ) -> Double {
+        let x = lhs.x - rhs.x
+        let y = lhs.y - rhs.y
+        return x * x + y * y
+    }
+
+    private static func layoutRect(
+        for node: FocusNode,
+        at position: SpatialPoint
+    ) -> LayoutRect {
+        let footprint = layoutFootprint(for: node)
+        return LayoutRect(
+            centre: position,
+            width: footprint.width,
+            height: footprint.height
+        )
+    }
+
+    private static func layoutFootprint(for node: FocusNode) -> (width: Double, height: Double) {
+        // These dimensions include a quiet gutter around the largest supported node shape.
+        // Nodes with notes reserve the card's expanded selected height as well.
+        if node.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return (1.78, 1.18)
+        }
+        return (1.94, 1.92)
     }
 }

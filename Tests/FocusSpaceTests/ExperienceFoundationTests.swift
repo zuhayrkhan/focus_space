@@ -650,6 +650,58 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertLessThanOrEqual(Set(rootPositions.map(\.x)).count, 3)
     }
 
+    @MainActor
+    func testAutomaticPlacementAvoidsManualAnchorsAndPersistsUserMoves() throws {
+        let anchorPosition = SpatialPoint(x: 1.25, y: -0.5)
+        let anchor = FocusNode(title: "Placed by me", position: anchorPosition)
+        let firstAutomatic = FocusNode(
+            title: "Automatic one",
+            position: anchorPosition,
+            placementPolicy: .automatic
+        )
+        let secondAutomatic = FocusNode(
+            title: "Automatic two",
+            position: anchorPosition,
+            placementPolicy: .automatic
+        )
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let repository = JSONFocusMapRepository(fileURL: folder.appending(path: "map.json"))
+        try repository.save(FocusMap(nodes: [anchor, firstAutomatic, secondAutomatic]))
+
+        let store = FocusSpaceStore(repository: repository)
+
+        XCTAssertEqual(store.map.node(id: anchor.id)?.position, anchorPosition)
+        XCTAssertEqual(store.map.node(id: anchor.id)?.placementPolicy, .manual)
+        XCTAssertFalse(MindMapArranger.hasOverlaps(in: store.map))
+
+        let chosenPosition = SpatialPoint(x: -4.2, y: 2.4)
+        store.move(firstAutomatic.id, to: chosenPosition)
+        store.addChild(to: nil)
+
+        XCTAssertEqual(store.map.node(id: firstAutomatic.id)?.position, chosenPosition)
+        store.saveImmediately()
+        let reloaded = try XCTUnwrap(repository.load())
+
+        XCTAssertEqual(reloaded.node(id: firstAutomatic.id)?.position, chosenPosition)
+        XCTAssertEqual(reloaded.node(id: firstAutomatic.id)?.placementPolicy, .manual)
+        XCTAssertEqual(reloaded.node(id: anchor.id)?.position, anchorPosition)
+    }
+
+    @MainActor
+    func testArrangeReturnsEveryNodeToAutomaticPlacementWithoutOverlaps() throws {
+        let first = FocusNode(title: "First", notes: "Expanded notes", position: .zero)
+        let second = FocusNode(title: "Second", position: .zero)
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let repository = JSONFocusMapRepository(fileURL: folder.appending(path: "map.json"))
+        try repository.save(FocusMap(nodes: [first, second]))
+        let store = FocusSpaceStore(repository: repository)
+
+        store.arrangeMindMap()
+
+        XCTAssertTrue(store.map.nodes.allSatisfy { $0.placementPolicy == .automatic })
+        XCTAssertFalse(MindMapArranger.hasOverlaps(in: store.map))
+    }
+
     func testNewChildrenContinueOutwardAlongTheirMindMapBranch() throws {
         let root = FocusNode(title: "Root")
         let branch = FocusNode(title: "Branch", parentID: root.id)

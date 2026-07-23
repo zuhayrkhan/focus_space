@@ -36,12 +36,18 @@ enum FocusNodeUrgency: String, CaseIterable, Codable, Identifiable, Sendable {
     }
 }
 
+enum NodePlacementPolicy: String, Codable, Sendable {
+    case automatic
+    case manual
+}
+
 struct FocusNode: Identifiable, Codable, Equatable, Sendable {
     let id: UUID
     var title: String
     var notes: String
     var kind: FocusNodeKind
     var position: SpatialPoint
+    private(set) var placementPolicy: NodePlacementPolicy
     private(set) var attention: Double
     var parentID: UUID?
     var relatedNodeIDs: Set<UUID>
@@ -61,6 +67,7 @@ struct FocusNode: Identifiable, Codable, Equatable, Sendable {
         notes: String = "",
         kind: FocusNodeKind = .task,
         position: SpatialPoint = .zero,
+        placementPolicy: NodePlacementPolicy = .manual,
         attention: Double = 0.5,
         parentID: UUID? = nil,
         relatedNodeIDs: Set<UUID> = [],
@@ -79,6 +86,7 @@ struct FocusNode: Identifiable, Codable, Equatable, Sendable {
         self.notes = notes
         self.kind = kind
         self.position = position
+        self.placementPolicy = placementPolicy
         self.attention = Self.clamp(attention)
         self.parentID = parentID
         self.relatedNodeIDs = relatedNodeIDs
@@ -94,7 +102,7 @@ struct FocusNode: Identifiable, Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, notes, kind, position, attention, parentID, relatedNodeIDs
+        case id, title, notes, kind, position, placementPolicy, attention, parentID, relatedNodeIDs
         case urgency, isEnabled, createdAt, updatedAt
         case dueDate, milestoneDate, reminderDate, lastManualOverride, gravityPreference
     }
@@ -106,6 +114,10 @@ struct FocusNode: Identifiable, Codable, Equatable, Sendable {
         notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
         kind = try container.decodeIfPresent(FocusNodeKind.self, forKey: .kind) ?? .task
         position = try container.decode(SpatialPoint.self, forKey: .position)
+        placementPolicy = try container.decodeIfPresent(
+            NodePlacementPolicy.self,
+            forKey: .placementPolicy
+        ) ?? .automatic
         attention = Self.clamp(try container.decode(Double.self, forKey: .attention))
         parentID = try container.decodeIfPresent(UUID.self, forKey: .parentID)
         relatedNodeIDs = try container.decodeIfPresent(Set<UUID>.self, forKey: .relatedNodeIDs) ?? []
@@ -126,8 +138,17 @@ struct FocusNode: Identifiable, Codable, Equatable, Sendable {
         updatedAt = .now
     }
 
-    mutating func move(to point: SpatialPoint) {
+    mutating func move(
+        to point: SpatialPoint,
+        placementPolicy: NodePlacementPolicy = .manual
+    ) {
         position = point
+        self.placementPolicy = placementPolicy
+        updatedAt = .now
+    }
+
+    mutating func useAutomaticPlacement() {
+        placementPolicy = .automatic
         updatedAt = .now
     }
 

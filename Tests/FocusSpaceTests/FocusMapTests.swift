@@ -60,7 +60,7 @@ final class FocusMapTests: XCTestCase {
         let text = try String(contentsOf: repository.fileURL, encoding: .utf8)
         XCTAssertTrue(text.contains("\n"))
         XCTAssertTrue(text.contains("Explore depth"))
-        XCTAssertTrue(text.contains("\"version\" : 4"))
+        XCTAssertTrue(text.contains("\"version\" : 5"))
         XCTAssertTrue(text.contains("Shown when this thought is selected."))
         XCTAssertTrue(text.contains("\"kind\" : \"reference\""))
         XCTAssertTrue(text.contains("\"urgency\" : \"overdue\""))
@@ -101,6 +101,7 @@ final class FocusMapTests: XCTestCase {
         XCTAssertNil(migrated.nodes.first?.reminderDate)
         XCTAssertNil(migrated.nodes.first?.lastManualOverride)
         XCTAssertEqual(migrated.nodes.first?.gravityPreference, .inherit)
+        XCTAssertEqual(migrated.nodes.first?.placementPolicy, .automatic)
     }
 
     func testVersionTwoJSONPreservesVisualSemanticsAndAddsNotesDefaults() throws {
@@ -125,13 +126,14 @@ final class FocusMapTests: XCTestCase {
 
         let migrated = try FocusMapJSONCodec.decode(data)
 
-        XCTAssertEqual(migrated.version, 4)
+        XCTAssertEqual(migrated.version, 5)
         XCTAssertEqual(migrated.title, "Version two")
         XCTAssertEqual(migrated.nodes.first?.kind, .group)
         XCTAssertEqual(migrated.nodes.first?.attention, 0.62)
         XCTAssertEqual(migrated.nodes.first?.urgency, .soon)
         XCTAssertEqual(migrated.nodes.first?.isEnabled, false)
         XCTAssertEqual(migrated.nodes.first?.notes, "")
+        XCTAssertEqual(migrated.nodes.first?.placementPolicy, .automatic)
         XCTAssertFalse(migrated.isGravityEnabled)
     }
 
@@ -158,17 +160,46 @@ final class FocusMapTests: XCTestCase {
 
         let migrated = try FocusMapJSONCodec.decode(data)
 
-        XCTAssertEqual(migrated.version, 4)
+        XCTAssertEqual(migrated.version, 5)
         XCTAssertEqual(migrated.nodes.first?.notes, "Do not lose this context.")
         XCTAssertEqual(migrated.nodes.first?.kind, .reference)
         XCTAssertNil(migrated.nodes.first?.dueDate)
         XCTAssertNil(migrated.nodes.first?.milestoneDate)
         XCTAssertNil(migrated.nodes.first?.reminderDate)
         XCTAssertEqual(migrated.nodes.first?.gravityPreference, .inherit)
+        XCTAssertEqual(migrated.nodes.first?.placementPolicy, .automatic)
         XCTAssertFalse(migrated.isGravityEnabled)
     }
 
-    func testVersionFourPersistsTemporalSignalsAndGravityPolicy() throws {
+    func testVersionFourJSONHandsLegacyCoordinatesToAutomaticPlacement() throws {
+        let data = Data("""
+        {
+          "version": 4,
+          "title": "Version four",
+          "nodes": [{
+            "id": "F0C05ACE-0004-4000-8000-000000000004",
+            "title": "Legacy position",
+            "kind": "task",
+            "position": { "x": 2.0, "y": 1.0 },
+            "attention": 0.5,
+            "relatedNodeIDs": [],
+            "urgency": "none",
+            "isEnabled": true,
+            "gravityPreference": "inherit",
+            "createdAt": "2027-01-15T08:00:00Z",
+            "updatedAt": "2027-01-15T08:00:00Z"
+          }]
+        }
+        """.utf8)
+
+        let migrated = try FocusMapJSONCodec.decode(data)
+
+        XCTAssertEqual(migrated.version, 5)
+        XCTAssertEqual(migrated.nodes.first?.placementPolicy, .automatic)
+        XCTAssertEqual(migrated.nodes.first?.position, SpatialPoint(x: 2, y: 1))
+    }
+
+    func testVersionFivePersistsPlacementTemporalSignalsAndGravityPolicy() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         let repository = JSONFocusMapRepository(fileURL: folder.appending(path: "map.json"))
         let due = Date(timeIntervalSince1970: 1_800_086_400)
@@ -177,6 +208,7 @@ final class FocusMapTests: XCTestCase {
         let override = due.addingTimeInterval(-86_400)
         let node = FocusNode(
             title: "Time-aware thought",
+            placementPolicy: .automatic,
             attention: 0.4,
             dueDate: due,
             milestoneDate: milestone,
@@ -192,9 +224,10 @@ final class FocusMapTests: XCTestCase {
         let loaded = try XCTUnwrap(repository.load())
 
         XCTAssertEqual(loaded, original)
-        XCTAssertEqual(loaded.version, 4)
+        XCTAssertEqual(loaded.version, 5)
         XCTAssertTrue(loaded.isGravityEnabled)
         XCTAssertEqual(loaded.nodes.first?.gravityPreference, .enabled)
+        XCTAssertEqual(loaded.nodes.first?.placementPolicy, .automatic)
     }
 
     func testNewerSchemaIsRejectedInsteadOfSilentlyLosingFields() {

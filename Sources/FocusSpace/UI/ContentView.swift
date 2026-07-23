@@ -289,7 +289,7 @@ struct ContentView: View {
                 .focusHelp("Add a new top-level thought")
             Button("Arrange mind map", systemImage: "wand.and.stars") { store.arrangeMindMap() }
                 .disabled(!store.canArrange)
-                .focusHelp("Clean up overlaps and arrange the current mind map")
+                .focusHelp("Clean up overlaps and return every thought to automatic placement")
             Button("Search", systemImage: "magnifyingglass") {
                 withAnimation(.spring(response: 0.35)) {
                     if store.isSearching {

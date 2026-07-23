@@ -53,6 +53,7 @@ final class FocusSpaceStore: ObservableObject {
     private var searchResultIDs: [UUID] = []
     private var navigationReturnIntent: FocusCameraIntent?
     private var atlasOffsets: [UUID: SpatialPoint] = [:]
+    private var needsAutomaticReflow = false
 
     private struct SearchSession {
         let selection: UUID?
@@ -71,13 +72,24 @@ final class FocusSpaceStore: ObservableObject {
         gravityEvaluationDate = nowProvider()
         do {
             let outcome = try repository.loadRecovering()
-            map = outcome.map ?? Self.sampleMap
+            var initialMap = outcome.map ?? Self.sampleMap
+            let adjustedPlacement = Self.reflowAutomaticNodes(in: &initialMap)
+            map = initialMap
             recoveredFromBackup = outcome.source == .recovery
             if recoveredFromBackup {
                 persistenceMessage = "Your last valid backup was restored. The damaged primary file was left available in Storage Details."
             }
+            if adjustedPlacement, outcome.map != nil {
+                do {
+                    try repository.save(initialMap)
+                } catch {
+                    persistenceMessage = "Automatic layout is ready, but couldn’t be saved yet: \(error.localizedDescription)"
+                }
+            }
         } catch {
-            map = Self.sampleMap
+            var initialMap = Self.sampleMap
+            Self.reflowAutomaticNodes(in: &initialMap)
+            map = initialMap
             persistenceMessage = "Couldn’t open the saved space: \(error.localizedDescription)"
         }
     }
@@ -440,10 +452,13 @@ final class FocusSpaceStore: ObservableObject {
     func preview(_ scene: DemoScene?) {
         discardSearchSession()
         atlasOffsets.removeAll()
+        var adjustedAutomaticPlacement = false
         if let scene {
             if personalMapBeforeDemo == nil { personalMapBeforeDemo = map }
             demoScene = scene
-            map = scene.map
+            var previewMap = scene.map
+            adjustedAutomaticPlacement = Self.reflowAutomaticNodes(in: &previewMap)
+            map = previewMap
         } else if let personalMapBeforeDemo {
             demoScene = nil
             map = personalMapBeforeDemo
@@ -452,7 +467,7 @@ final class FocusSpaceStore: ObservableObject {
         selection = nil
         isFocusModeEnabled = false
         hoveredNodeID = nil
-        if map.nodes.count >= 48 {
+        if map.nodes.count >= 48 || adjustedAutomaticPlacement {
             frameEntireMap()
         } else {
             resetCamera(animated: true)
@@ -485,7 +500,13 @@ final class FocusSpaceStore: ObservableObject {
     }
 
     func move(_ id: UUID, to point: SpatialPoint) {
-        mutate(recordingUndo: !isInteracting) { $0.updateNode(id: id) { $0.move(to: point) } }
+        mutate(recordingUndo: !isInteracting) { map in
+            map.updateNode(id: id) { $0.move(to: point) }
+            if !isInteracting {
+                Self.reflowAutomaticNodes(in: &map)
+            }
+        }
+        if isInteracting { needsAutomaticReflow = true }
     }
 
     func translate(
@@ -503,7 +524,11 @@ final class FocusSpaceStore: ObservableObject {
                     $0.move(to: SpatialPoint(x: origin.x + delta.x, y: origin.y + delta.y))
                 }
             }
+            if !isInteracting {
+                Self.reflowAutomaticNodes(in: &map)
+            }
         }
+        if isInteracting { needsAutomaticReflow = true }
         for rootID in atlasRoots {
             let origin = atlasOffsets[rootID] ?? .zero
             atlasOffsets[rootID] = SpatialPoint(x: origin.x + delta.x, y: origin.y + delta.y)
@@ -542,17 +567,25 @@ final class FocusSpaceStore: ObservableObject {
     }
 
     func arrangeMindMap() {
-        let positions = MindMapArranger.positions(for: map)
         mutate { map in
             for index in map.nodes.indices {
-                guard let position = positions[map.nodes[index].id] else { continue }
-                map.nodes[index].move(to: position)
+                map.nodes[index].useAutomaticPlacement()
             }
+            let positions = MindMapArranger.positions(for: map)
+            Self.reflowAutomaticNodes(in: &map, preferredPositions: positions)
         }
+        needsAutomaticReflow = false
         atlasOffsets.removeAll()
         frameEntireMap()
         let hidden = hiddenNodeCount
         visibilityNotice = hidden > 0 ? VisibilityNotice(hiddenCount: hidden, filter: filter) : nil
+    }
+
+    func useAutomaticPlacement(_ id: UUID) {
+        mutate { map in
+            map.updateNode(id: id) { $0.useAutomaticPlacement() }
+            Self.reflowAutomaticNodes(in: &map)
+        }
     }
 
     private func frameEntireMap() {
@@ -697,7 +730,11 @@ final class FocusSpaceStore: ObservableObject {
                 node.notes = notes
                 node.updatedAt = .now
             }
+            if !isInteracting {
+                Self.reflowAutomaticNodes(in: &map)
+            }
         }
+        if isInteracting { needsAutomaticReflow = true }
     }
 
     func relatedNodes(for id: UUID) -> [FocusNode] {
@@ -812,7 +849,8 @@ final class FocusSpaceStore: ObservableObject {
     }
 
     func importMapData(_ data: Data) throws {
-        let imported = try FocusMapJSONCodec.decode(data)
+        var imported = try FocusMapJSONCodec.decode(data)
+        Self.reflowAutomaticNodes(in: &imported)
         discardSearchSession()
         demoScene = nil
         personalMapBeforeDemo = nil
@@ -886,6 +924,11 @@ final class FocusSpaceStore: ObservableObject {
     func endInteraction() {
         guard isInteracting else { return }
         isInteracting = false
+        if needsAutomaticReflow {
+            Self.reflowAutomaticNodes(in: &map)
+            needsAutomaticReflow = false
+            scheduleSave()
+        }
         if undoMaps.last == map {
             undoMaps.removeLast()
             if !undoAtlasOffsets.isEmpty { undoAtlasOffsets.removeLast() }
@@ -899,10 +942,14 @@ final class FocusSpaceStore: ObservableObject {
             title: parent == nil ? "New thought" : "New direction",
             kind: parent == nil ? .project : .task,
             position: MindMapArranger.positionForNewChild(in: map, parentID: parentID),
+            placementPolicy: .automatic,
             attention: parent?.attention ?? 0.65,
             parentID: parentID
         )
-        mutate { $0.nodes.append(node) }
+        mutate {
+            $0.nodes.append(node)
+            Self.reflowAutomaticNodes(in: &$0)
+        }
         selection = node.id
         editingNodeID = node.id
         return node.id
@@ -919,6 +966,7 @@ final class FocusSpaceStore: ObservableObject {
             notes: copy.notes,
             kind: copy.kind,
             position: SpatialPoint(x: copy.position.x + 0.45, y: copy.position.y - 0.45),
+            placementPolicy: .automatic,
             attention: copy.attention,
             parentID: copy.parentID,
             urgency: copy.urgency,
@@ -928,12 +976,18 @@ final class FocusSpaceStore: ObservableObject {
             reminderDate: copy.reminderDate,
             gravityPreference: copy.gravityPreference
         )
-        mutate { $0.nodes.append(copy) }
+        mutate {
+            $0.nodes.append(copy)
+            Self.reflowAutomaticNodes(in: &$0)
+        }
         selection = copy.id
     }
 
     func delete(_ id: UUID) {
-        mutate { $0.removeNodeAndDescendants(id: id) }
+        mutate {
+            $0.removeNodeAndDescendants(id: id)
+            Self.reflowAutomaticNodes(in: &$0)
+        }
         selection = nil
         isFocusModeEnabled = false
     }
@@ -1194,17 +1248,37 @@ final class FocusSpaceStore: ObservableObject {
 
     private func withAnimationIntent(_ change: () -> Void) { change() }
 
+    @discardableResult
+    private static func reflowAutomaticNodes(
+        in map: inout FocusMap,
+        preferredPositions: [UUID: SpatialPoint]? = nil
+    ) -> Bool {
+        let positions = MindMapArranger.nonOverlappingPositions(
+            for: map,
+            preferredPositions: preferredPositions
+        )
+        var changed = false
+        for index in map.nodes.indices where map.nodes[index].placementPolicy == .automatic {
+            guard let position = positions[map.nodes[index].id],
+                  position != map.nodes[index].position else { continue }
+            map.nodes[index].move(to: position, placementPolicy: .automatic)
+            changed = true
+        }
+        return changed
+    }
+
     private static var sampleMap: FocusMap {
         let launch = FocusNode(
             title: "Shape the first release",
             notes: "A calm spatial home for deciding what deserves attention now.",
             kind: .project,
             position: SpatialPoint(x: 0, y: 0.55),
+            placementPolicy: .automatic,
             attention: 0.93
         )
-        let prototype = FocusNode(title: "Make depth feel natural", kind: .group, position: SpatialPoint(x: -1.65, y: -0.65), attention: 0.8, parentID: launch.id)
-        let conversations = FocusNode(title: "Talk to early explorers", position: SpatialPoint(x: 1.65, y: -0.7), attention: 0.62, parentID: launch.id, urgency: .soon)
-        let later = FocusNode(title: "Shared spaces", kind: .someday, position: SpatialPoint(x: 2.7, y: 1.15), attention: 0.18)
+        let prototype = FocusNode(title: "Make depth feel natural", kind: .group, position: SpatialPoint(x: -1.65, y: -0.65), placementPolicy: .automatic, attention: 0.8, parentID: launch.id)
+        let conversations = FocusNode(title: "Talk to early explorers", position: SpatialPoint(x: 1.65, y: -0.7), placementPolicy: .automatic, attention: 0.62, parentID: launch.id, urgency: .soon)
+        let later = FocusNode(title: "Shared spaces", kind: .someday, position: SpatialPoint(x: 2.7, y: 1.15), placementPolicy: .automatic, attention: 0.18)
         return FocusMap(nodes: [launch, prototype, conversations, later])
     }
 }
