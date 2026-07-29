@@ -3,6 +3,59 @@ import RealityKit
 @testable import FocusSpace
 
 final class ProgressiveDisclosureTests: XCTestCase {
+    func testWorkspaceChromeAdaptsColourKeyWithoutLeavingInvisibleControls() {
+        XCTAssertEqual(
+            WorkspaceChromePolicy.colourKeyPresentation(
+                isEnabled: true,
+                nodeCount: 0,
+                workspaceLevel: .detail,
+                isDistractionFree: false,
+                compactKeyIsExpanded: false
+            ),
+            .hidden
+        )
+        XCTAssertEqual(
+            WorkspaceChromePolicy.colourKeyPresentation(
+                isEnabled: true,
+                nodeCount: 12,
+                workspaceLevel: .detail,
+                isDistractionFree: false,
+                compactKeyIsExpanded: false
+            ),
+            .expanded
+        )
+        XCTAssertEqual(
+            WorkspaceChromePolicy.colourKeyPresentation(
+                isEnabled: true,
+                nodeCount: 180,
+                workspaceLevel: .atlas,
+                isDistractionFree: false,
+                compactKeyIsExpanded: false
+            ),
+            .button
+        )
+        XCTAssertEqual(
+            WorkspaceChromePolicy.colourKeyPresentation(
+                isEnabled: true,
+                nodeCount: 180,
+                workspaceLevel: .atlas,
+                isDistractionFree: false,
+                compactKeyIsExpanded: true
+            ),
+            .expanded
+        )
+        XCTAssertEqual(
+            WorkspaceChromePolicy.colourKeyPresentation(
+                isEnabled: true,
+                nodeCount: 12,
+                workspaceLevel: .detail,
+                isDistractionFree: true,
+                compactKeyIsExpanded: true
+            ),
+            .hidden
+        )
+    }
+
     func testGuideCoversTheFourPartsOfTheSpatialGrammar() {
         XCTAssertEqual(SpatialGuideStep.allCases, [.depth, .hierarchy, .branchMovement, .gravity])
         for step in SpatialGuideStep.allCases {

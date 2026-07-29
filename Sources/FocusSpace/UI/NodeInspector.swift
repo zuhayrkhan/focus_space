@@ -11,6 +11,7 @@ struct NodeInspector: View {
                     VStack(alignment: .leading, spacing: 18) {
                         Text(node.title)
                             .font(.title2.weight(.semibold))
+                            .fixedSize(horizontal: false, vertical: true)
                     Picker("Kind", selection: Binding(
                         get: { store.selectedNode?.kind ?? .task },
                         set: { store.setKind(node.id, to: $0) }
@@ -136,7 +137,7 @@ struct NodeInspector: View {
                 )
             }
         }
-        .frame(width: 260)
+        .frame(minWidth: 260, idealWidth: 300, maxWidth: 420, maxHeight: .infinity)
         .background(.ultraThinMaterial)
     }
 

@@ -1,6 +1,6 @@
 # Focus Space usability follow-up roadmap
 
-Status: U1 and U2 completed on 21 July 2026; U3 implemented on 22 July 2026 and ready for hands-on review
+Status: U1 and U2 completed on 21 July 2026; U3 implemented on 22 July 2026; U4 completed on 29 July 2026
 
 Scope: usability refinement only. Preserve the accepted bilateral arrangement, semantic colours, shapes, relationship curves, selection haze, and Z-as-attention model.
 
@@ -134,6 +134,8 @@ Definition of done:
 ## Milestone U4 — Adaptive workspace chrome
 
 Priority: fourth; tune after semantic zoom establishes the information hierarchy.
+
+Completion: implemented and verified on 29 July 2026. Active toolbar controls now retain clear contrast while disabled commands remain quiet. The navigation strip leaves both rendering and hit testing when idle. The colour key hides for an empty space, collapses in dense and Atlas contexts, chooses an unoccupied corner until manually docked, and avoids the Atlas context breadcrumb. A reversible `Shift-Command-D` workspace action hides both sidebars and transient canvas chrome. The inspector is adjustable from 260 to 420 points, Experience Previews live under Help, and custom view commands join the single native View menu.
 
 - Increase active-toolbar contrast while retaining calm disabled states.
 - Keep the navigation strip legible when visible and fully remove it from hit testing when hidden.

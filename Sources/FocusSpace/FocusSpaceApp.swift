@@ -54,32 +54,8 @@ struct FocusSpaceApp: App {
                 Button("Find in Focus Space…", action: store.requestSearch)
                     .keyboardShortcut("f", modifiers: .command)
             }
-            CommandMenu("View") {
-                Button("Arrange Mind Map", action: store.arrangeMindMap)
-                    .keyboardShortcut("l", modifiers: [.command, .shift])
-                    .disabled(!store.canArrange)
-                Divider()
-                Button("Frame Selected Branch", action: store.frameSelection)
-                    .keyboardShortcut("f", modifiers: [.command, .shift])
-                    .disabled(!store.canFrameSelection)
-                Divider()
-                Button("Zoom In") { store.zoomCamera(by: 1.18, animated: true) }
-                    .keyboardShortcut("=", modifiers: .command)
-                Button("Zoom Out") { store.zoomCamera(by: 0.84, animated: true) }
-                    .keyboardShortcut("-", modifiers: .command)
-                Divider()
-                Button("Move Universe Left") { store.orbitCamera(horizontal: -36, vertical: 0) }
-                    .keyboardShortcut(.leftArrow, modifiers: .option)
-                Button("Move Universe Right") { store.orbitCamera(horizontal: 36, vertical: 0) }
-                    .keyboardShortcut(.rightArrow, modifiers: .option)
-                Button("Move Universe Up") { store.orbitCamera(horizontal: 0, vertical: -36) }
-                    .keyboardShortcut(.upArrow, modifiers: .option)
-                Button("Move Universe Down") { store.orbitCamera(horizontal: 0, vertical: 36) }
-                    .keyboardShortcut(.downArrow, modifiers: .option)
-                Divider()
-                Button("Reset to Canonical Universe") { store.resetCamera() }
-                    .keyboardShortcut("0", modifiers: .command)
-            }
+            FocusSpaceViewCommands(store: store)
+            ExperiencePreviewCommands(store: store)
             CommandMenu("Navigate") {
                 Button("Previous Thought", action: store.selectPreviousThought)
                     .keyboardShortcut(.upArrow, modifiers: .control)
@@ -116,6 +92,94 @@ struct FocusSpaceApp: App {
                 .keyboardShortcut(.downArrow, modifiers: [.option, .command])
                 .disabled(store.selection == nil)
             }
+        }
+    }
+}
+
+private struct FocusSpaceViewCommands: Commands {
+    @ObservedObject var store: FocusSpaceStore
+    @FocusedValue(\.workspaceViewActions) private var workspaceActions
+
+    var body: some Commands {
+        CommandGroup(after: .sidebar) {
+            Button("Arrange Mind Map", action: store.arrangeMindMap)
+                .keyboardShortcut("l", modifiers: [.command, .shift])
+                .disabled(!store.canArrange)
+            Button("Frame Selected Branch", action: store.frameSelection)
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+                .disabled(!store.canFrameSelection)
+            Divider()
+            Button("Zoom In") { store.zoomCamera(by: 1.18, animated: true) }
+                .keyboardShortcut("=", modifiers: .command)
+            Button("Zoom Out") { store.zoomCamera(by: 0.84, animated: true) }
+                .keyboardShortcut("-", modifiers: .command)
+            Button("Reset to Canonical Universe") { store.resetCamera() }
+                .keyboardShortcut("0", modifiers: .command)
+            Divider()
+            Button("Move Universe Left") { store.orbitCamera(horizontal: -36, vertical: 0) }
+                .keyboardShortcut(.leftArrow, modifiers: .option)
+            Button("Move Universe Right") { store.orbitCamera(horizontal: 36, vertical: 0) }
+                .keyboardShortcut(.rightArrow, modifiers: .option)
+            Button("Move Universe Up") { store.orbitCamera(horizontal: 0, vertical: -36) }
+                .keyboardShortcut(.upArrow, modifiers: .option)
+            Button("Move Universe Down") { store.orbitCamera(horizontal: 0, vertical: 36) }
+                .keyboardShortcut(.downArrow, modifiers: .option)
+            Divider()
+            Button(
+                workspaceActions?.isInspectorVisible == true ? "Hide Inspector" : "Show Inspector"
+            ) {
+                workspaceActions?.toggleInspector()
+            }
+            .keyboardShortcut("i", modifiers: [.command, .option])
+            .disabled(workspaceActions == nil)
+            Button(
+                workspaceActions?.isColourKeyVisible == true ? "Hide Colour Key" : "Show Colour Key"
+            ) {
+                workspaceActions?.toggleColourKey()
+            }
+            .disabled(workspaceActions == nil)
+            Button(
+                workspaceActions?.isDistractionFree == true
+                    ? "Restore Workspace Chrome"
+                    : "Distraction-Free Workspace"
+            ) {
+                workspaceActions?.toggleDistractionFree()
+            }
+            .keyboardShortcut("d", modifiers: [.command, .shift])
+            .disabled(workspaceActions == nil)
+        }
+    }
+}
+
+private struct ExperiencePreviewCommands: Commands {
+    @ObservedObject var store: FocusSpaceStore
+
+    var body: some Commands {
+        CommandGroup(before: .help) {
+            Menu("Experience Previews") {
+                Button {
+                    store.preview(nil)
+                } label: {
+                    previewLabel("Personal Space", isSelected: store.demoScene == nil)
+                }
+                Divider()
+                ForEach(DemoScene.allCases) { scene in
+                    Button {
+                        store.preview(scene)
+                    } label: {
+                        previewLabel(scene.rawValue, isSelected: store.demoScene == scene)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func previewLabel(_ title: String, isSelected: Bool) -> some View {
+        if isSelected {
+            Label(title, systemImage: "checkmark")
+        } else {
+            Text(title)
         }
     }
 }

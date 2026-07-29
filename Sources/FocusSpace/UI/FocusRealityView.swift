@@ -6,12 +6,14 @@ struct FocusRealityView: View {
     @Binding var universeGuideOpacity: Double
     @Binding var colourKeyVisible: Bool
     let nodeShapePreference: NodeShapePreference
+    let workspaceChromeHidden: Bool
     let onCanvasInteraction: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage("nodeLegendCorner") private var legendCornerRaw = LegendCorner.topTrailing.rawValue
+    @AppStorage("nodeLegendCornerIsManual") private var legendCornerIsManual = false
     @State private var renderer = RealityFocusRenderer()
     @State private var spatialDragSession: SpatialDragSession?
     @State private var depthDragSession: DepthDragSession?
@@ -24,6 +26,7 @@ struct FocusRealityView: View {
     @State private var controlsTask: Task<Void, Never>?
     @State private var idleReturnTask: Task<Void, Never>?
     @State private var isLegendInteracting = false
+    @State private var compactKeyIsExpanded = false
     @State private var navigationStartedOnLegend = false
     @State private var canvasSize = CGSize.zero
     @GestureState private var legendDragOffset = CGSize.zero
@@ -79,11 +82,11 @@ struct FocusRealityView: View {
             }
         }
         .background(WorkspaceBackground())
-        .overlay(alignment: legendCorner.alignment) {
-            if colourKeyVisible { nodeLegend }
+        .overlay(alignment: effectiveLegendCorner.alignment) {
+            colourKeyOverlay
         }
         .overlay(alignment: .trailing) {
-            if let depthDragSession {
+            if let depthDragSession, !workspaceChromeHidden {
                 DepthGuideView(
                     landing: depthDragSession.landing,
                     movesBranch: depthDragSession.nodeIDs.count > 1
@@ -92,7 +95,12 @@ struct FocusRealityView: View {
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
-        .overlay(alignment: .bottom) { navigationControls }
+        .overlay(alignment: .bottom) {
+            if controlsVisible && !workspaceChromeHidden {
+                navigationControls
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
         .onGeometryChange(for: CGSize.self) { proxy in
             proxy.size
         } action: { newSize in
@@ -211,7 +219,7 @@ struct FocusRealityView: View {
                 canvasFocused = true
                 if cameraDragOrigin == nil { onCanvasInteraction() }
                 if cameraDragOrigin == nil,
-                   legendCorner.contains(value.startLocation, in: canvasSize) {
+                   effectiveLegendCorner.contains(value.startLocation, in: canvasSize) {
                     navigationStartedOnLegend = true
                 }
                 guard !isLegendInteracting, !navigationStartedOnLegend else {
@@ -467,12 +475,41 @@ struct FocusRealityView: View {
         .overlay { RoundedRectangle(cornerRadius: 13).stroke(.white.opacity(0.10)) }
         .shadow(color: .black.opacity(0.24), radius: 18, y: 8)
         .padding(.bottom, 12)
-        .opacity(controlsVisible ? 1 : 0.16)
+        .allowsHitTesting(controlsVisible && !workspaceChromeHidden)
+        .accessibilityHidden(!controlsVisible || workspaceChromeHidden)
         .onHover { hovering in
             if hovering { controlsVisible = true; controlsTask?.cancel() }
             else { noteNavigationActivity() }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: controlsVisible)
+    }
+
+    @ViewBuilder
+    private var colourKeyOverlay: some View {
+        switch WorkspaceChromePolicy.colourKeyPresentation(
+            isEnabled: colourKeyVisible,
+            nodeCount: store.map.nodes.count,
+            workspaceLevel: store.workspacePresentationLevel,
+            isDistractionFree: workspaceChromeHidden,
+            compactKeyIsExpanded: compactKeyIsExpanded
+        ) {
+        case .hidden:
+            EmptyView()
+        case .button:
+            Button("Show colour key", systemImage: "circle.grid.2x2") {
+                compactKeyIsExpanded = true
+            }
+            .labelStyle(.iconOnly)
+            .controlSize(.large)
+            .padding(14)
+            .background(.ultraThinMaterial, in: .circle)
+            .overlay { Circle().stroke(.white.opacity(0.12)) }
+            .shadow(color: .black.opacity(0.20), radius: 12, y: 6)
+            .padding(.bottom, effectiveLegendCorner.isBottom ? 42 : 0)
+            .focusHelp("Expand the colour key")
+        case .expanded:
+            nodeLegend
+        }
     }
 
     private var nodeLegend: some View {
@@ -481,6 +518,14 @@ struct FocusRealityView: View {
                 Image(systemName: "circle.grid.2x2")
                 Text("COLOUR KEY")
                 Spacer(minLength: 8)
+                if store.workspacePresentationLevel == .atlas || store.map.nodes.count >= 48 {
+                    Button("Collapse colour key", systemImage: "chevron.down") {
+                        compactKeyIsExpanded = false
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                }
                 Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
                     .foregroundStyle(.tertiary)
             }
@@ -510,7 +555,7 @@ struct FocusRealityView: View {
         .shadow(color: .black.opacity(0.20), radius: 14, y: 7)
         .padding(.horizontal, 14)
         .padding(.top, 14)
-        .padding(.bottom, legendCorner.isBottom ? 46 : 14)
+        .padding(.bottom, effectiveLegendCorner.isBottom ? 46 : 14)
         .offset(legendDragOffset)
         .gesture(
             DragGesture(minimumDistance: 4)
@@ -519,9 +564,10 @@ struct FocusRealityView: View {
                     offset = value.translation
                 }
                 .onEnded { value in
-                    legendCornerRaw = legendCorner
+                    legendCornerRaw = effectiveLegendCorner
                         .moved(by: value.translation)
                         .rawValue
+                    legendCornerIsManual = true
                     Task { @MainActor in
                         await Task.yield()
                         isLegendInteracting = false
@@ -531,8 +577,23 @@ struct FocusRealityView: View {
         .focusHelp("Drag the colour key toward any corner to dock it there")
     }
 
-    private var legendCorner: LegendCorner {
+    private var storedLegendCorner: LegendCorner {
         LegendCorner(rawValue: legendCornerRaw) ?? .topTrailing
+    }
+
+    private var effectiveLegendCorner: LegendCorner {
+        legendCornerIsManual ? storedLegendCorner : clearestLegendCorner
+    }
+
+    private var clearestLegendCorner: LegendCorner {
+        let visibleItems = store.sceneSnapshot.items.filter { $0.presentationLevel.isSpatiallyVisible }
+        let preferredOrder: [LegendCorner] = [.topTrailing, .bottomTrailing, .bottomLeading, .topLeading]
+        return preferredOrder.min { lhs, rhs in
+            let lhsContextPenalty = lhs == .topLeading && store.viewContextTitle != nil ? 20.0 : 0
+            let rhsContextPenalty = rhs == .topLeading && store.viewContextTitle != nil ? 20.0 : 0
+            return lhs.occupancyScore(for: visibleItems) + lhsContextPenalty
+                < rhs.occupancyScore(for: visibleItems) + rhsContextPenalty
+        } ?? .topTrailing
     }
 
     private var rendererTextScale: Float {
@@ -691,7 +752,7 @@ private struct DepthGuideView: View {
     }
 }
 
-private enum LegendCorner: String {
+private enum LegendCorner: String, CaseIterable {
     case topLeading
     case topTrailing
     case bottomLeading
@@ -710,6 +771,22 @@ private enum LegendCorner: String {
         switch self {
         case .bottomLeading, .bottomTrailing: true
         case .topLeading, .topTrailing: false
+        }
+    }
+
+    func occupancyScore(for items: [FocusSceneSnapshot.Item]) -> Double {
+        items.reduce(0) { score, item in
+            let position = item.renderPosition ?? item.position
+            let horizontallyMatches = switch self {
+            case .topLeading, .bottomLeading: position.x < 0
+            case .topTrailing, .bottomTrailing: position.x >= 0
+            }
+            let verticallyMatches = switch self {
+            case .topLeading, .topTrailing: position.y >= 0
+            case .bottomLeading, .bottomTrailing: position.y < 0
+            }
+            guard horizontallyMatches, verticallyMatches else { return score }
+            return score + (item.isSelected ? 8 : 1)
         }
     }
 

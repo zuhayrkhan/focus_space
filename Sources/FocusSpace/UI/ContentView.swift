@@ -18,15 +18,18 @@ struct ContentView: View {
     @State private var exporterVisible = false
     @State private var persistenceDiagnosticsVisible = false
     @State private var importInProgress = false
+    @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
+    @State private var restoredSplitViewVisibility: NavigationSplitViewVisibility = .all
+    @State private var isDistractionFree = false
     @StateObject private var performanceMonitor = ReleasePerformanceMonitor()
     @StateObject private var soundPlayer = FocusSoundPlayer()
     @FocusState private var searchFocused: Bool
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $splitViewVisibility) {
             sidebar
         } detail: {
-            HStack(spacing: 0) {
+            HSplitView {
                 if usesListFallback {
                     FocusListFallbackView(store: store)
                 } else {
@@ -35,11 +38,12 @@ struct ContentView: View {
                         universeGuideOpacity: $universeGuideOpacity,
                         colourKeyVisible: $colourKeyVisible,
                         nodeShapePreference: NodeShapePreference(rawValue: nodeShapePreferenceRaw) ?? .semantic,
+                        workspaceChromeHidden: isDistractionFree,
                         onCanvasInteraction: { workspaceGuidesVisible = false }
                     )
+                    .frame(minWidth: 560)
                 }
-                if inspectorVisible {
-                    Divider()
+                if inspectorVisible && !isDistractionFree {
                     NodeInspector(store: store)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
@@ -57,6 +61,14 @@ struct ContentView: View {
         }
         .navigationTitle(store.map.title)
         .toolbar { toolbar }
+        .focusedSceneValue(\.workspaceViewActions, WorkspaceViewActions(
+            isDistractionFree: isDistractionFree,
+            isInspectorVisible: inspectorVisible && !isDistractionFree,
+            isColourKeyVisible: colourKeyVisible && !isDistractionFree,
+            toggleDistractionFree: toggleDistractionFree,
+            toggleInspector: toggleInspector,
+            toggleColourKey: { colourKeyVisible.toggle() }
+        ))
         .sheet(item: editingBinding) { node in
             RenameView(node: node) { store.rename(node.id, to: $0) }
         }
@@ -244,33 +256,6 @@ struct ContentView: View {
             .padding(.horizontal, 12)
             .padding(.top, 6)
             Spacer()
-            Menu {
-                Button("Personal space") { store.preview(nil) }
-                Divider()
-                ForEach(DemoScene.allCases) { scene in
-                    Button {
-                        withAnimation(FocusMotion.calmSpring) {
-                            store.preview(scene)
-                        }
-                    } label: {
-                        if store.demoScene == scene {
-                            Label(scene.rawValue, systemImage: "checkmark")
-                        } else {
-                            Text(scene.rawValue)
-                        }
-                    }
-                }
-            } label: {
-                Label(
-                    store.demoScene?.rawValue ?? "Experience previews",
-                    systemImage: "sparkles.rectangle.stack"
-                )
-                .font(.caption)
-                .lineLimit(2)
-            }
-            .menuStyle(.borderlessButton)
-            .focusHelp("Open a deterministic example space, or return to your personal space")
-            .padding(.horizontal, 12)
         }
         .frame(minWidth: 175)
         .background(.ultraThinMaterial)
@@ -281,16 +266,21 @@ struct ContentView: View {
         ToolbarItemGroup {
             Button("Undo", systemImage: "arrow.uturn.backward", action: store.undo)
                 .disabled(!store.canUndo)
+                .foregroundStyle(.white.opacity(0.92))
                 .focusHelp("Undo the last change", shortcut: "⌘Z")
             Button("Redo", systemImage: "arrow.uturn.forward", action: store.redo)
                 .disabled(!store.canRedo)
+                .foregroundStyle(.white.opacity(0.92))
                 .focusHelp("Redo the last undone change", shortcut: "⇧⌘Z")
             Button("Add thought", systemImage: "plus") { store.addChild(to: nil) }
+                .foregroundStyle(.white.opacity(0.92))
                 .focusHelp("Add a new top-level thought")
             Button("Arrange mind map", systemImage: "wand.and.stars") { store.arrangeMindMap() }
                 .disabled(!store.canArrange)
+                .foregroundStyle(.white.opacity(0.92))
                 .focusHelp("Clean up overlaps and return every thought to automatic placement")
             Button("Search", systemImage: "magnifyingglass") {
+                if isDistractionFree { toggleDistractionFree() }
                 withAnimation(.spring(response: 0.35)) {
                     if store.isSearching {
                         store.cancelSearch()
@@ -300,6 +290,7 @@ struct ContentView: View {
                     }
                 }
             }
+            .foregroundStyle(.white.opacity(0.92))
             .focusHelp(
                 store.isSearching ? "Close Find" : "Find a thought",
                 shortcut: store.isSearching ? nil : "⌘F"
@@ -319,15 +310,18 @@ struct ContentView: View {
                         }
                     }
                 }
+                .foregroundStyle(.white.opacity(0.92))
                 .focusHelp("Jump directly to a hierarchy island")
             }
             Button("Workspace guides", systemImage: "rectangle.3.group") {
+                if isDistractionFree { toggleDistractionFree() }
                 if !workspaceGuidesVisible {
                     store.cancelSearch()
                     spatialGuideVisible = false
                 }
                 workspaceGuidesVisible.toggle()
             }
+            .foregroundStyle(.white.opacity(0.92))
             .popover(isPresented: $workspaceGuidesVisible, arrowEdge: .top) {
                 WorkspaceGuidesView(
                     store: store,
@@ -338,10 +332,12 @@ struct ContentView: View {
             }
             .focusHelp("Show workspace legend, filters, gravity, and accessibility settings")
             Button("Spatial guide", systemImage: "questionmark.circle") {
+                if isDistractionFree { toggleDistractionFree() }
                 workspaceGuidesVisible = false
                 store.cancelSearch()
                 spatialGuideVisible = true
             }
+            .foregroundStyle(.white.opacity(0.92))
             .focusHelp("Open the guide to depth, hierarchy, branch movement, and gravity")
             Menu("Space file", systemImage: "externaldrive") {
                 Button("Import Space…", systemImage: "square.and.arrow.down") {
@@ -358,6 +354,7 @@ struct ContentView: View {
                     persistenceDiagnosticsVisible = true
                 }
             }
+            .foregroundStyle(.white.opacity(0.92))
             .focusHelp("Import, export, save, or inspect this space’s storage")
             if let id = store.selection {
                 Button(
@@ -366,22 +363,65 @@ struct ContentView: View {
                 ) {
                 withAnimation(FocusMotion.quickFade) { store.toggleFocusMode() }
                 }
+                .foregroundStyle(.white.opacity(0.92))
                 .focusHelp(store.isFocusModeEnabled ? "Reveal every branch" : "Quiet unrelated branches and concentrate on the selection")
                 Button("Pull forward", systemImage: "arrow.up.to.line") { store.shiftAttention(id, by: 0.12) }
+                    .foregroundStyle(.white.opacity(0.92))
                     .focusHelp("Pull the selected thought closer to increase its attention")
                 Button("Push back", systemImage: "arrow.down.to.line") { store.shiftAttention(id, by: -0.12) }
+                    .foregroundStyle(.white.opacity(0.92))
                     .focusHelp("Push the selected thought away to decrease its attention")
             }
-            Button(inspectorVisible ? "Hide inspector" : "Show inspector", systemImage: "sidebar.right") {
-                withAnimation(FocusMotion.quickSpring) {
-                    inspectorVisible.toggle()
-                }
+            Button(
+                inspectorVisible && !isDistractionFree ? "Hide inspector" : "Show inspector",
+                systemImage: "sidebar.right"
+            ) {
+                toggleInspector()
             }
+            .foregroundStyle(.white.opacity(0.92))
             .keyboardShortcut("i", modifiers: [.command, .option])
             .focusHelp(
-                inspectorVisible ? "Hide inspector" : "Show inspector",
+                inspectorVisible && !isDistractionFree ? "Hide inspector" : "Show inspector",
                 shortcut: "⌥⌘I"
             )
+            Button(
+                isDistractionFree ? "Restore workspace chrome" : "Distraction-free workspace",
+                systemImage: isDistractionFree ? "rectangle.inset.filled" : "rectangle"
+            ) {
+                toggleDistractionFree()
+            }
+            .foregroundStyle(.white.opacity(0.92))
+            .keyboardShortcut("d", modifiers: [.command, .shift])
+            .focusHelp(
+                isDistractionFree ? "Restore sidebars and workspace overlays" : "Hide both sidebars and workspace overlays",
+                shortcut: "⇧⌘D"
+            )
+        }
+    }
+
+    private func toggleInspector() {
+        if isDistractionFree {
+            toggleDistractionFree()
+            if inspectorVisible { return }
+        }
+        withAnimation(FocusMotion.quickSpring) {
+            inspectorVisible.toggle()
+        }
+    }
+
+    private func toggleDistractionFree() {
+        withAnimation(FocusMotion.quickSpring) {
+            if isDistractionFree {
+                isDistractionFree = false
+                splitViewVisibility = restoredSplitViewVisibility
+            } else {
+                restoredSplitViewVisibility = splitViewVisibility
+                isDistractionFree = true
+                splitViewVisibility = .detailOnly
+                workspaceGuidesVisible = false
+                spatialGuideVisible = false
+                store.cancelSearch()
+            }
         }
     }
 
