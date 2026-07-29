@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import AppKit
 
 struct ContentView: View {
     @ObservedObject var store: FocusSpaceStore
@@ -21,6 +22,7 @@ struct ContentView: View {
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
     @State private var restoredSplitViewVisibility: NavigationSplitViewVisibility = .all
     @State private var isDistractionFree = false
+    @State private var performanceCaptureStarted = false
     @StateObject private var performanceMonitor = ReleasePerformanceMonitor()
     @StateObject private var soundPlayer = FocusSoundPlayer()
     @FocusState private var searchFocused: Bool
@@ -37,8 +39,10 @@ struct ContentView: View {
                         store: store,
                         universeGuideOpacity: $universeGuideOpacity,
                         colourKeyVisible: $colourKeyVisible,
+                        preferAccessibleList: $preferAccessibleList,
                         nodeShapePreference: NodeShapePreference(rawValue: nodeShapePreferenceRaw) ?? .semantic,
                         workspaceChromeHidden: isDistractionFree,
+                        performanceMonitor: performanceMonitor,
                         onCanvasInteraction: { workspaceGuidesVisible = false }
                     )
                     .frame(minWidth: 560)
@@ -56,6 +60,15 @@ struct ContentView: View {
                 if showsPerformanceHUD {
                     PerformanceHUD(monitor: performanceMonitor, store: store)
                         .padding(12)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if let configuration = ReleasePerformanceConfiguration.current() {
+                    ReleasePerformanceCaptureView(
+                        monitor: performanceMonitor,
+                        store: store,
+                        configuration: configuration
+                    )
                 }
             }
         }
@@ -174,6 +187,9 @@ struct ContentView: View {
                 guard !Task.isCancelled else { return }
                 store.refreshGravity()
             }
+        }
+        .task {
+            await runPerformanceCaptureIfRequested()
         }
         .onExitCommand { _ = dismissTransientUI() }
     }
@@ -635,6 +651,42 @@ struct ContentView: View {
 
     private var showsPerformanceHUD: Bool {
         CommandLine.arguments.contains("--performance-hud")
+    }
+
+    @MainActor
+    private func runPerformanceCaptureIfRequested() async {
+        guard !performanceCaptureStarted,
+              let configuration = ReleasePerformanceConfiguration.current() else { return }
+        performanceCaptureStarted = true
+        ReleaseWindowConfiguration.applyRequestedSize()
+        try? await Task.sleep(for: .seconds(1))
+        let query = store.map.nodes.last?.title ?? ""
+        if !query.isEmpty {
+            store.updateSearchText(query)
+            store.cancelSearch()
+        }
+        if store.canArrange {
+            store.arrangeMindMap()
+        }
+        performanceMonitor.requestDiagnosticPreview()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(4))
+        while performanceMonitor.diagnosticPreviewFramesPerSecond == nil,
+              ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        let remaining = max(configuration.captureSeconds - 1, 2)
+        try? await Task.sleep(for: .seconds(remaining))
+        do {
+            try ReleasePerformanceReport.make(
+                configuration: configuration,
+                store: store,
+                monitor: performanceMonitor
+            ).write(to: configuration.outputURL)
+        } catch {
+            let failureURL = configuration.outputURL.appendingPathExtension("error.txt")
+            try? error.localizedDescription.write(to: failureURL, atomically: true, encoding: .utf8)
+        }
+        NSApplication.shared.terminate(nil)
     }
 
     private func icon(for filter: FocusSpaceStore.Filter) -> String {

@@ -142,64 +142,66 @@ final class FocusSpaceStore: ObservableObject {
     var islandSummaries: [FocusIslandSummary] { spatialPresentation.islands }
 
     var sceneSnapshot: FocusSceneSnapshot {
-        let presentation = spatialPresentation
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let contextID = hoveredNodeID ?? selection
-        let contextIDs = contextID.map(contextNodeIDs(around:)) ?? []
-        let ancestryIDs = Set(contextID.map(map.ancestors(of:)) ?? [])
-        let items = map.nodes.map { node in
-            let presentationIntent = presentation.nodeIntents[node.id]
-            let gravity = gravityAssessment(for: node)
-            let effectiveAttention = gravity.attention
-            let includedByFilter: Bool = switch filter {
-            case .today: node.attention >= 0.42
-            case .all: true
-            case .parked: node.attention < 0.42
+        FocusPerformance.measure(.snapshotDerivation) {
+            let presentation = spatialPresentation
+            let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let contextID = hoveredNodeID ?? selection
+            let contextIDs = contextID.map(contextNodeIDs(around:)) ?? []
+            let ancestryIDs = Set(contextID.map(map.ancestors(of:)) ?? [])
+            let items = map.nodes.map { node in
+                let presentationIntent = presentation.nodeIntents[node.id]
+                let gravity = gravityAssessment(for: node)
+                let effectiveAttention = gravity.attention
+                let includedByFilter: Bool = switch filter {
+                case .today: node.attention >= 0.42
+                case .all: true
+                case .parked: node.attention < 0.42
+                }
+                let includedBySearch = query.isEmpty
+                    || node.title.localizedCaseInsensitiveContains(query)
+                    || node.notes.localizedCaseInsensitiveContains(query)
+                let includedByFocus = !isFocusModeEnabled || contextIDs.contains(node.id)
+                let excludedByViewFilter = query.isEmpty && !includedByFilter
+                return FocusSceneSnapshot.Item(
+                    id: node.id,
+                    title: node.title,
+                    notes: node.notes,
+                    kind: node.kind,
+                    position: node.position,
+                    attention: effectiveAttention,
+                    manualAttention: node.attention,
+                    gravityReason: gravity.reason,
+                    isGravityInfluenced: gravity.isInfluencing,
+                    parentID: node.parentID,
+                    hierarchyDepth: hierarchyDepth(of: node),
+                    urgency: strongestUrgency(node.urgency, gravity.urgency),
+                    isEnabled: node.isEnabled,
+                    isSelected: selection == node.id,
+                    isDimmed: excludedByViewFilter || !includedBySearch || !includedByFocus,
+                    isHovered: hoveredNodeID == node.id,
+                    contextRole: contextRole(
+                        for: node.id,
+                        contextID: contextID,
+                        contextIDs: contextIDs,
+                        ancestryIDs: ancestryIDs
+                    ),
+                    presentationLevel: presentationIntent?.level ?? .full,
+                    renderPosition: presentationIntent?.renderPosition,
+                    presentationSummary: presentationIntent?.summary
+                )
             }
-            let includedBySearch = query.isEmpty
-                || node.title.localizedCaseInsensitiveContains(query)
-                || node.notes.localizedCaseInsensitiveContains(query)
-            let includedByFocus = !isFocusModeEnabled || contextIDs.contains(node.id)
-            let excludedByViewFilter = query.isEmpty && !includedByFilter
-            return FocusSceneSnapshot.Item(
-                id: node.id,
-                title: node.title,
-                notes: node.notes,
-                kind: node.kind,
-                position: node.position,
-                attention: effectiveAttention,
-                manualAttention: node.attention,
-                gravityReason: gravity.reason,
-                isGravityInfluenced: gravity.isInfluencing,
-                parentID: node.parentID,
-                hierarchyDepth: hierarchyDepth(of: node),
-                urgency: strongestUrgency(node.urgency, gravity.urgency),
-                isEnabled: node.isEnabled,
-                isSelected: selection == node.id,
-                isDimmed: excludedByViewFilter || !includedBySearch || !includedByFocus,
-                isHovered: hoveredNodeID == node.id,
-                contextRole: contextRole(
-                    for: node.id,
+            return FocusSceneSnapshot(
+                items: items,
+                relationships: relationships(
+                    items: items,
                     contextID: contextID,
                     contextIDs: contextIDs,
                     ancestryIDs: ancestryIDs
                 ),
-                presentationLevel: presentationIntent?.level ?? .full,
-                renderPosition: presentationIntent?.renderPosition,
-                presentationSummary: presentationIntent?.summary
+                workspacePresentationLevel: presentation.workspaceLevel,
+                islands: presentation.islands
             )
         }
-        return FocusSceneSnapshot(
-            items: items,
-            relationships: relationships(
-                items: items,
-                contextID: contextID,
-                contextIDs: contextIDs,
-                ancestryIDs: ancestryIDs
-            ),
-            workspacePresentationLevel: presentation.workspaceLevel,
-            islands: presentation.islands
-        )
     }
 
     func select(_ id: UUID?) {
@@ -337,26 +339,28 @@ final class FocusSpaceStore: ObservableObject {
     }
 
     func updateSearchText(_ text: String) {
-        if !isSearching { beginSearch() }
-        searchText = text
-        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else {
-            searchResultIDs = []
-            restoreSearchOrigin(keepingSession: true)
-            return
+        FocusPerformance.measure(.searchFraming) {
+            if !isSearching { beginSearch() }
+            searchText = text
+            let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !query.isEmpty else {
+                searchResultIDs = []
+                restoreSearchOrigin(keepingSession: true)
+                return
+            }
+            let matches = map.nodes.filter {
+                $0.title.localizedCaseInsensitiveContains(query)
+                    || $0.notes.localizedCaseInsensitiveContains(query)
+            }.sorted(by: spatiallyPrecedes)
+            searchResultIDs = matches.map(\.id)
+            guard let first = matches.first else {
+                selection = nil
+                isFocusModeEnabled = false
+                return
+            }
+            let resultID = selection.flatMap { searchResultIDs.contains($0) ? $0 : nil } ?? first.id
+            focusSearchResult(resultID)
         }
-        let matches = map.nodes.filter {
-            $0.title.localizedCaseInsensitiveContains(query)
-                || $0.notes.localizedCaseInsensitiveContains(query)
-        }.sorted(by: spatiallyPrecedes)
-        searchResultIDs = matches.map(\.id)
-        guard let first = matches.first else {
-            selection = nil
-            isFocusModeEnabled = false
-            return
-        }
-        let resultID = selection.flatMap { searchResultIDs.contains($0) ? $0 : nil } ?? first.id
-        focusSearchResult(resultID)
     }
 
     func selectSearchResult(by offset: Int) {
@@ -567,18 +571,20 @@ final class FocusSpaceStore: ObservableObject {
     }
 
     func arrangeMindMap() {
-        mutate { map in
-            for index in map.nodes.indices {
-                map.nodes[index].useAutomaticPlacement()
+        FocusPerformance.measure(.arrange) {
+            mutate { map in
+                for index in map.nodes.indices {
+                    map.nodes[index].useAutomaticPlacement()
+                }
+                let positions = MindMapArranger.positions(for: map)
+                Self.reflowAutomaticNodes(in: &map, preferredPositions: positions)
             }
-            let positions = MindMapArranger.positions(for: map)
-            Self.reflowAutomaticNodes(in: &map, preferredPositions: positions)
+            needsAutomaticReflow = false
+            atlasOffsets.removeAll()
+            frameEntireMap()
+            let hidden = hiddenNodeCount
+            visibilityNotice = hidden > 0 ? VisibilityNotice(hiddenCount: hidden, filter: filter) : nil
         }
-        needsAutomaticReflow = false
-        atlasOffsets.removeAll()
-        frameEntireMap()
-        let hidden = hiddenNodeCount
-        visibilityNotice = hidden > 0 ? VisibilityNotice(hiddenCount: hidden, filter: filter) : nil
     }
 
     func useAutomaticPlacement(_ id: UUID) {

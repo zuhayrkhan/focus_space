@@ -9,7 +9,7 @@ struct FocusListFallbackView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Label("Accessible map view", systemImage: "list.bullet.indent")
                         .font(.headline)
-                    Text("The same hierarchy and attention model without 3D effects.")
+                    Text("\(orderedItems.count) thoughts · complete searchable hierarchy without 3D effects.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

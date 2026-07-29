@@ -41,6 +41,18 @@ Run the reproducible personal/internal release gate:
 ./Scripts/release-check.sh
 ```
 
+Run the U5 scale matrix against the exact packaged app:
+
+```sh
+./Scripts/run-performance-matrix.sh
+```
+
+This exercises 32-, 65-, and 180-thought fixtures at compact, standard, and
+large window sizes. It writes signpost-backed JSON reports to
+`.build/performance-u5/`. See
+[Usability milestone U5](docs/usability-milestone-u5.md) for the budgets,
+baseline, accessibility strategy, and physical-trackpad checklist.
+
 See [Release scope and optional future notarisation](docs/release.md).
 
 The first launch creates a small example map. Changes autosave as readable JSON in
@@ -70,4 +82,5 @@ RealityKit types do not cross into the domain or application layers.
 - [Milestone 9 delight and release hardening](docs/milestone-9-delight-release.md)
 - [Interaction refinements from Ibrahim's review](docs/interaction-refinements.md)
 - [Branch focus, shape preferences, and selected notes](docs/branch-focus-shapes-and-notes.md)
+- [Usability milestone U5 — measured scale and interaction feel](docs/usability-milestone-u5.md)
 - [Visual north star](docs/reference/focus-space-visual-north-star.png)

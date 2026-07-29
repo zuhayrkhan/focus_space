@@ -5,8 +5,10 @@ struct FocusRealityView: View {
     @ObservedObject var store: FocusSpaceStore
     @Binding var universeGuideOpacity: Double
     @Binding var colourKeyVisible: Bool
+    @Binding var preferAccessibleList: Bool
     let nodeShapePreference: NodeShapePreference
     let workspaceChromeHidden: Bool
+    @ObservedObject var performanceMonitor: ReleasePerformanceMonitor
     let onCanvasInteraction: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
@@ -25,6 +27,7 @@ struct FocusRealityView: View {
     @State private var controlsVisible = true
     @State private var controlsTask: Task<Void, Never>?
     @State private var idleReturnTask: Task<Void, Never>?
+    @State private var diagnosticPreviewTask: Task<Void, Never>?
     @State private var isLegendInteracting = false
     @State private var compactKeyIsExpanded = false
     @State private var navigationStartedOnLegend = false
@@ -33,6 +36,7 @@ struct FocusRealityView: View {
     @FocusState private var canvasFocused: Bool
 
     var body: some View {
+        let snapshot = store.sceneSnapshot
         RealityView { content in
             content.add(renderer.makeScene())
         } update: { content in
@@ -40,7 +44,7 @@ struct FocusRealityView: View {
                 ?? content.entities.first(where: { $0.name == RealityFocusRenderer.rootName }) else { return }
             renderer.reconcile(
                 root: root,
-                snapshot: store.sceneSnapshot,
+                snapshot: snapshot,
                 shapePreference: differentiateWithoutColor ? .semantic : nodeShapePreference,
                 highContrast: colorSchemeContrast == .increased,
                 textScale: rendererTextScale,
@@ -49,6 +53,8 @@ struct FocusRealityView: View {
             renderer.updateAmbient(root: root, reduceMotion: reduceMotion)
             renderer.updateCamera(root: root, intent: store.cameraIntent, reduceMotion: reduceMotion)
             renderer.updateGuideOpacity(root: root, opacity: universeGuideOpacity)
+            performanceMonitor.markWorkspaceReady()
+            FocusPerformance.markLaunchInteractive()
         }
         .background {
             TrackpadMagnificationBridge(
@@ -110,6 +116,14 @@ struct FocusRealityView: View {
         .onDisappear {
             controlsTask?.cancel()
             idleReturnTask?.cancel()
+            diagnosticPreviewTask?.cancel()
+        }
+        .onChange(of: performanceMonitor.exerciseRevision) { _, revision in
+            guard revision > 0 else { return }
+            diagnosticPreviewTask?.cancel()
+            diagnosticPreviewTask = Task { @MainActor in
+                await runDiagnosticPreview(snapshot: snapshot)
+            }
         }
         .focusable()
         .focused($canvasFocused)
@@ -124,7 +138,11 @@ struct FocusRealityView: View {
             return .handled
         }
         .accessibilityRepresentation {
-            AccessibilitySpaceRepresentation(store: store)
+            AccessibilitySpaceRepresentation(
+                store: store,
+                snapshot: snapshot,
+                preferAccessibleList: $preferAccessibleList
+            )
         }
     }
 
@@ -194,7 +212,13 @@ struct FocusRealityView: View {
                         }
                     )
                 }
-                renderer.previewNodeDrag(items: previewItems, snapshot: session.snapshot)
+                if session.nodeIDs.count > 1 {
+                    FocusPerformance.measure(.optionDragPreview) {
+                        renderer.previewNodeDrag(items: previewItems, snapshot: session.snapshot)
+                    }
+                } else {
+                    renderer.previewNodeDrag(items: previewItems, snapshot: session.snapshot)
+                }
             }
             .onEnded { value in
                 if let id = nodeID(from: value.entity),
@@ -624,6 +648,64 @@ struct FocusRealityView: View {
                   store.cameraIntent.mode == .free else { return }
             store.resetCamera(animated: true)
         }
+    }
+
+    @MainActor
+    private func runDiagnosticPreview(snapshot: FocusSceneSnapshot) async {
+        guard let rootItem = snapshot.items.first(where: {
+            $0.presentationLevel.isSpatiallyVisible
+        }) else {
+            performanceMonitor.completeDiagnosticPreview(frameCount: 0, elapsedSeconds: 0)
+            return
+        }
+        let nodeIDs = store.map.connectedComponent(containing: rootItem.id)
+        let originalPose = store.cameraIntent.pose
+        let startedAt = DispatchTime.now().uptimeNanoseconds
+        let frameCount = 90
+        for frame in 0..<frameCount {
+            guard !Task.isCancelled else { return }
+            let phase = Double(frame) / Double(frameCount - 1) * .pi * 2
+            let dx = sin(phase) * 0.12
+            let dy = cos(phase) * 0.05
+            let items = snapshot.items.compactMap { item -> FocusSceneSnapshot.Item? in
+                guard nodeIDs.contains(item.id) else { return nil }
+                return previewItem(
+                    item,
+                    position: SpatialPoint(x: item.position.x + dx, y: item.position.y + dy),
+                    attention: item.attention,
+                    renderPosition: item.renderPosition.map {
+                        SpatialPoint(x: $0.x + dx, y: $0.y + dy)
+                    }
+                )
+            }
+            FocusPerformance.measure(.optionDragPreview) {
+                renderer.previewNodeDrag(items: items, snapshot: snapshot)
+            }
+            renderer.previewCamera(
+                pose: FocusCameraIntent.Pose(
+                    target: SpatialPoint(
+                        x: originalPose.target.x + sin(phase) * 0.04,
+                        y: originalPose.target.y + cos(phase) * 0.03
+                    ),
+                    targetAttention: originalPose.targetAttention,
+                    yaw: originalPose.yaw,
+                    pitch: originalPose.pitch,
+                    distance: originalPose.distance
+                ),
+                reduceMotion: true
+            )
+            try? await Task.sleep(for: .milliseconds(8))
+        }
+        renderer.previewNodeDrag(
+            items: snapshot.items.filter { nodeIDs.contains($0.id) },
+            snapshot: snapshot
+        )
+        renderer.previewCamera(pose: originalPose, reduceMotion: true)
+        let endedAt = DispatchTime.now().uptimeNanoseconds
+        performanceMonitor.completeDiagnosticPreview(
+            frameCount: frameCount,
+            elapsedSeconds: Double(endedAt - startedAt) / 1_000_000_000
+        )
     }
 
     private func nodeID(from entity: Entity) -> UUID? {

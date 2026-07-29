@@ -13,6 +13,8 @@ struct ReleasePerformanceSnapshot: Equatable, Sendable {
 @MainActor
 final class ReleasePerformanceMonitor: ObservableObject {
     @Published private(set) var snapshot: ReleasePerformanceSnapshot?
+    @Published private(set) var exerciseRevision = 0
+    @Published private(set) var diagnosticPreviewFramesPerSecond: Double?
 
     private var previousFrame: TimeInterval?
     private var intervals: [Double] = []
@@ -21,6 +23,16 @@ final class ReleasePerformanceMonitor: ObservableObject {
 
     func markWorkspaceReady(at date: Date = .now) {
         if workspaceReadyAt == nil { workspaceReadyAt = date }
+    }
+
+    func requestDiagnosticPreview() {
+        diagnosticPreviewFramesPerSecond = nil
+        exerciseRevision += 1
+    }
+
+    func completeDiagnosticPreview(frameCount: Int, elapsedSeconds: Double) {
+        guard frameCount > 0, elapsedSeconds > 0 else { return }
+        diagnosticPreviewFramesPerSecond = Double(frameCount) / elapsedSeconds
     }
 
     func recordFrame(at date: Date) {

@@ -160,4 +160,89 @@ final class PersistenceAccessibilityTests: XCTestCase {
             supportsAdvancedEffects: false
         ))
     }
+
+    @MainActor
+    func testLargeSpatialAccessibilityUsesVisibleContextAndPreservesCompleteListData() {
+        let store = FocusSpaceStore()
+        store.preview(.largeMap)
+        let snapshot = store.sceneSnapshot
+        let projection = AccessibilitySceneProjection.make(
+            snapshot: snapshot,
+            map: store.map,
+            selection: nil
+        )
+        let visibleIDs = Set(snapshot.items.filter {
+            $0.presentationLevel.isSpatiallyVisible
+        }.map(\.id))
+        let projectedIDs = Set(projection.items.map(\.id))
+
+        XCTAssertEqual(snapshot.items.count, 180)
+        XCTAssertEqual(projection.items.count, 18)
+        XCTAssertEqual(projection.omittedItemCount, 162)
+        XCTAssertEqual(projectedIDs, visibleIDs)
+        XCTAssertTrue(projection.relationships.allSatisfy {
+            projectedIDs.contains($0.sourceID) && projectedIDs.contains($0.targetID)
+        })
+    }
+
+    @MainActor
+    func testMediumAtlasAccessibilityPromotesSelectedIslandWithoutLosingListCompleteness() throws {
+        let store = FocusSpaceStore()
+        store.preview(.animalFamilies)
+        var snapshot = store.sceneSnapshot
+        var projection = AccessibilitySceneProjection.make(
+            snapshot: snapshot,
+            map: store.map,
+            selection: nil
+        )
+
+        XCTAssertEqual(snapshot.items.count, 65)
+        XCTAssertEqual(projection.items.count, 5)
+        XCTAssertEqual(projection.omittedItemCount, 60)
+
+        let mammals = try XCTUnwrap(store.map.nodes.first { $0.title == "Mammals" })
+        store.select(mammals.id)
+        snapshot = store.sceneSnapshot
+        projection = AccessibilitySceneProjection.make(
+            snapshot: snapshot,
+            map: store.map,
+            selection: mammals.id
+        )
+
+        XCTAssertTrue(projection.items.contains { $0.id == mammals.id })
+        XCTAssertLessThanOrEqual(projection.items.count, 48)
+        XCTAssertEqual(projection.items.count + projection.omittedItemCount, 65)
+        XCTAssertEqual(snapshot.items.count, 65)
+    }
+
+    func testPerformanceReportArgumentsAreDeterministic() throws {
+        let configuration = try XCTUnwrap(ReleasePerformanceConfiguration.current(arguments: [
+            "FocusSpace",
+            "--demo", "large",
+            "--window-size", "compact",
+            "--performance-seconds", "7",
+            "--performance-report", "/tmp/focus-space-report.json"
+        ]))
+
+        XCTAssertEqual(configuration.fixture, "large")
+        XCTAssertEqual(configuration.windowSize, "compact")
+        XCTAssertEqual(configuration.captureSeconds, 7)
+        XCTAssertEqual(configuration.outputURL.path, "/tmp/focus-space-report.json")
+    }
+
+    func testPerformanceRecorderKeepsRendererAndAccessibilityMeasurementsSeparate() {
+        let before = FocusPerformanceRecorder.shared.summaries()
+        FocusPerformance.measure(.rendererReconciliation) {}
+        FocusPerformance.measure(.accessibilityRepresentation) {}
+        let after = FocusPerformanceRecorder.shared.summaries()
+
+        XCTAssertEqual(
+            after[FocusPerformanceOperation.rendererReconciliation.rawValue]?.sampleCount,
+            (before[FocusPerformanceOperation.rendererReconciliation.rawValue]?.sampleCount ?? 0) + 1
+        )
+        XCTAssertEqual(
+            after[FocusPerformanceOperation.accessibilityRepresentation.rawValue]?.sampleCount,
+            (before[FocusPerformanceOperation.accessibilityRepresentation.rawValue]?.sampleCount ?? 0) + 1
+        )
+    }
 }

@@ -15,6 +15,7 @@ struct FocusSpaceApp: App {
     @StateObject private var store: FocusSpaceStore
 
     init() {
+        FocusPerformance.beginLaunch()
         let store = FocusSpaceStore()
         let arguments = CommandLine.arguments
         if let flagIndex = arguments.firstIndex(of: "--demo"),
@@ -190,9 +191,19 @@ enum ReleaseWindowConfiguration {
         guard let index = arguments.firstIndex(of: "--window-size"),
               arguments.indices.contains(index + 1) else { return (1240, 780) }
         return switch arguments[index + 1] {
-        case "compact": (980, 650)
-        case "large": (1600, 1000)
+        case "compact": (980, 702)
+        case "large": (1260, 820)
         default: (1240, 780)
         }
+    }
+
+    @MainActor
+    static func applyRequestedSize() {
+        guard CommandLine.arguments.contains("--window-size"),
+              let window = NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first
+        else { return }
+        let size = requestedSize
+        window.setContentSize(NSSize(width: size.width, height: size.height))
+        window.center()
     }
 }

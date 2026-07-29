@@ -48,35 +48,37 @@ final class RealityFocusRenderer {
         let shapeChanged = self.shapePreference != shapePreference
         let accessibilityChanged = self.highContrast != highContrast || self.textScale != textScale
         guard lastSnapshot != snapshot || shapeChanged || accessibilityChanged else { return }
-        self.shapePreference = shapePreference
-        self.highContrast = highContrast
-        self.textScale = textScale
-        if accessibilityChanged { relationshipKeys.removeAll() }
-        let previousItems = shapeChanged || accessibilityChanged
-            ? [:]
-            : Dictionary(uniqueKeysWithValues: (lastSnapshot?.items ?? []).map { ($0.id, $0) })
+        FocusPerformance.measure(.rendererReconciliation) {
+            self.shapePreference = shapePreference
+            self.highContrast = highContrast
+            self.textScale = textScale
+            if accessibilityChanged { relationshipKeys.removeAll() }
+            let previousItems = shapeChanged || accessibilityChanged
+                ? [:]
+                : Dictionary(uniqueKeysWithValues: (lastSnapshot?.items ?? []).map { ($0.id, $0) })
 
-        let visibleItems = snapshot.items.filter { $0.presentationLevel.isSpatiallyVisible }
-        let desiredIDs = Set(visibleItems.map { $0.id.uuidString })
-        let obsoleteNodes = root.children.filter { child in
-            guard child.name.hasPrefix("node-") else { return false }
-            let id = String(child.name.dropFirst(5))
-            return !desiredIDs.contains(id)
-        }
-        for child in obsoleteNodes {
-            child.removeFromParent()
-        }
+            let visibleItems = snapshot.items.filter { $0.presentationLevel.isSpatiallyVisible }
+            let desiredIDs = Set(visibleItems.map { $0.id.uuidString })
+            let obsoleteNodes = root.children.filter { child in
+                guard child.name.hasPrefix("node-") else { return false }
+                let id = String(child.name.dropFirst(5))
+                return !desiredIDs.contains(id)
+            }
+            for child in obsoleteNodes {
+                child.removeFromParent()
+            }
 
-        for item in visibleItems {
-            let name = "node-\(item.id.uuidString)"
-            let entity = root.findEntity(named: name) ?? makeNode(name: name)
-            if entity.parent == nil { root.addChild(entity) }
-            update(entity: entity, for: item, previous: previousItems[item.id], reduceMotion: reduceMotion)
-        }
+            for item in visibleItems {
+                let name = "node-\(item.id.uuidString)"
+                let entity = root.findEntity(named: name) ?? makeNode(name: name)
+                if entity.parent == nil { root.addChild(entity) }
+                update(entity: entity, for: item, previous: previousItems[item.id], reduceMotion: reduceMotion)
+            }
 
-        reconcileRelationships(root: root, snapshot: snapshot)
-        updateGuideDepth(root: root, snapshot: snapshot)
-        lastSnapshot = snapshot
+            reconcileRelationships(root: root, snapshot: snapshot)
+            updateGuideDepth(root: root, snapshot: snapshot)
+            lastSnapshot = snapshot
+        }
     }
 
     func updateAmbient(root: Entity, reduceMotion: Bool) {
@@ -716,69 +718,71 @@ final class RealityFocusRenderer {
     }
 
     private func reconcileRelationships(root: Entity, snapshot: FocusSceneSnapshot) {
-        let byID = Dictionary(uniqueKeysWithValues: snapshot.items.map { ($0.id, $0) })
-        let desiredNames = Set(snapshot.relationships.map(relationshipName))
-        let obsoleteRelationships = root.children.filter {
-            $0.name.hasPrefix("link-") && !desiredNames.contains($0.name)
-        }
-        for child in obsoleteRelationships {
-            child.removeFromParent()
-            relationshipKeys[child.name] = nil
-        }
-        for relationship in snapshot.relationships {
-            guard let source = byID[relationship.sourceID], let target = byID[relationship.targetID] else { continue }
-            let sourceStyle = visualStyle(for: source)
-            let targetStyle = visualStyle(for: target)
-            let sourceScale = Float(0.78 + source.attention * 0.24) * source.presentationLevel.scale
-            let targetScale = Float(0.78 + target.attention * 0.24) * target.presentationLevel.scale
-            let name = relationshipName(relationship)
-            let key = RelationshipRenderKey(
-                relationship: relationship,
-                sourcePosition: position(for: source),
-                sourceSize: SIMD2<Float>(sourceStyle.width, sourceStyle.height) * sourceScale,
-                sourceShape: sourceStyle.silhouette,
-                targetPosition: position(for: target),
-                targetSize: SIMD2<Float>(targetStyle.width, targetStyle.height) * targetScale,
-                targetShape: targetStyle.silhouette
-            )
-            if relationshipKeys[name] == key, root.findEntity(named: name) != nil { continue }
-            root.findEntity(named: name)?.removeFromParent()
-            let curve = RelationshipCurveGeometry.make(
-                from: key.sourcePosition,
-                sourceSize: key.sourceSize,
-                to: key.targetPosition,
-                targetSize: key.targetSize,
-                kind: relationship.kind,
-                sourceShape: key.sourceShape,
-                targetShape: key.targetShape,
-                sampleCount: quality == .efficient ? 28 : 42
-            )
-            let pointRuns = curve.pointRuns(for: relationship.kind)
-            let link = Entity()
-            link.name = name
-            let opacity = relationshipOpacity(relationship)
-            let showsGlow = relationship.emphasis == .branch || relationship.emphasis == .direct
-            if showsGlow,
-               let glow = try? makeRelationshipMesh(pointRuns: pointRuns, thickness: relationshipThickness(relationship) * 1.8) {
-                var material = UnlitMaterial(color: relationshipColor(relationship))
-                material.faceCulling = .none
-                material.blending = .transparent(opacity: .init(scale: opacity * 0.16))
-                let entity = ModelEntity(mesh: glow, materials: [material])
-                entity.name = "link-glow"
-                entity.position.z = -0.006
-                link.addChild(entity)
+        FocusPerformance.measure(.relationshipReconciliation) {
+            let byID = Dictionary(uniqueKeysWithValues: snapshot.items.map { ($0.id, $0) })
+            let desiredNames = Set(snapshot.relationships.map(relationshipName))
+            let obsoleteRelationships = root.children.filter {
+                $0.name.hasPrefix("link-") && !desiredNames.contains($0.name)
             }
-            if let core = try? makeRelationshipMesh(pointRuns: pointRuns, thickness: relationshipThickness(relationship)) {
-                var material = UnlitMaterial(color: relationshipColor(relationship))
-                material.faceCulling = .none
-                material.blending = .transparent(opacity: .init(scale: opacity))
-                let entity = ModelEntity(mesh: core, materials: [material])
-                entity.name = relationship.kind == .crossLink ? "cross-link-core" : "hierarchy-core"
-                entity.position.z = 0.004
-                link.addChild(entity)
+            for child in obsoleteRelationships {
+                child.removeFromParent()
+                relationshipKeys[child.name] = nil
             }
-            root.addChild(link)
-            relationshipKeys[name] = key
+            for relationship in snapshot.relationships {
+                guard let source = byID[relationship.sourceID], let target = byID[relationship.targetID] else { continue }
+                let sourceStyle = visualStyle(for: source)
+                let targetStyle = visualStyle(for: target)
+                let sourceScale = Float(0.78 + source.attention * 0.24) * source.presentationLevel.scale
+                let targetScale = Float(0.78 + target.attention * 0.24) * target.presentationLevel.scale
+                let name = relationshipName(relationship)
+                let key = RelationshipRenderKey(
+                    relationship: relationship,
+                    sourcePosition: position(for: source),
+                    sourceSize: SIMD2<Float>(sourceStyle.width, sourceStyle.height) * sourceScale,
+                    sourceShape: sourceStyle.silhouette,
+                    targetPosition: position(for: target),
+                    targetSize: SIMD2<Float>(targetStyle.width, targetStyle.height) * targetScale,
+                    targetShape: targetStyle.silhouette
+                )
+                if relationshipKeys[name] == key, root.findEntity(named: name) != nil { continue }
+                root.findEntity(named: name)?.removeFromParent()
+                let curve = RelationshipCurveGeometry.make(
+                    from: key.sourcePosition,
+                    sourceSize: key.sourceSize,
+                    to: key.targetPosition,
+                    targetSize: key.targetSize,
+                    kind: relationship.kind,
+                    sourceShape: key.sourceShape,
+                    targetShape: key.targetShape,
+                    sampleCount: quality == .efficient ? 28 : 42
+                )
+                let pointRuns = curve.pointRuns(for: relationship.kind)
+                let link = Entity()
+                link.name = name
+                let opacity = relationshipOpacity(relationship)
+                let showsGlow = relationship.emphasis == .branch || relationship.emphasis == .direct
+                if showsGlow,
+                   let glow = try? makeRelationshipMesh(pointRuns: pointRuns, thickness: relationshipThickness(relationship) * 1.8) {
+                    var material = UnlitMaterial(color: relationshipColor(relationship))
+                    material.faceCulling = .none
+                    material.blending = .transparent(opacity: .init(scale: opacity * 0.16))
+                    let entity = ModelEntity(mesh: glow, materials: [material])
+                    entity.name = "link-glow"
+                    entity.position.z = -0.006
+                    link.addChild(entity)
+                }
+                if let core = try? makeRelationshipMesh(pointRuns: pointRuns, thickness: relationshipThickness(relationship)) {
+                    var material = UnlitMaterial(color: relationshipColor(relationship))
+                    material.faceCulling = .none
+                    material.blending = .transparent(opacity: .init(scale: opacity))
+                    let entity = ModelEntity(mesh: core, materials: [material])
+                    entity.name = relationship.kind == .crossLink ? "cross-link-core" : "hierarchy-core"
+                    entity.position.z = 0.004
+                    link.addChild(entity)
+                }
+                root.addChild(link)
+                relationshipKeys[name] = key
+            }
         }
     }
 
