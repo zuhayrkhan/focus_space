@@ -23,6 +23,7 @@ struct FocusRealityView: View {
     @State private var magnifyOrigin: FocusCameraIntent.Pose?
     @State private var trackpadPanOrigin: FocusCameraIntent.Pose?
     @State private var trackpadPanMode: TrackpadPanMode?
+    @State private var selectionGuard = CanvasSelectionGuard()
     @State private var rotationOrigin: FocusCameraIntent.Pose?
     @State private var controlsVisible = true
     @State private var controlsTask: Task<Void, Never>?
@@ -168,6 +169,9 @@ struct FocusRealityView: View {
     private var emptySelectionGesture: some Gesture {
         SpatialTapGesture(count: 1)
             .onEnded { _ in
+                guard selectionGuard.permitsDeselection(
+                    at: ProcessInfo.processInfo.systemUptime
+                ) else { return }
                 canvasFocused = true
                 onCanvasInteraction()
                 store.hover(nil)
@@ -279,6 +283,7 @@ struct FocusRealityView: View {
     }
 
     private func beginMagnification() {
+        selectionGuard.beginNavigation()
         magnifyOrigin = store.cameraIntent.pose
         noteNavigationActivity(scheduleIdleReturn: false)
     }
@@ -297,6 +302,7 @@ struct FocusRealityView: View {
             store.setCameraPose(store.zoomCameraPose(by: factor, from: origin))
         }
         magnifyOrigin = nil
+        selectionGuard.endNavigation(at: ProcessInfo.processInfo.systemUptime)
         noteNavigationActivity()
     }
 
@@ -305,10 +311,12 @@ struct FocusRealityView: View {
             renderer.previewCamera(pose: origin, reduceMotion: reduceMotion)
         }
         magnifyOrigin = nil
+        selectionGuard.endNavigation(at: ProcessInfo.processInfo.systemUptime)
         noteNavigationActivity()
     }
 
     private func beginTrackpadPan() {
+        selectionGuard.beginNavigation()
         trackpadPanOrigin = store.cameraIntent.pose
         trackpadPanMode = .pending(store.hoveredNodeID)
         noteNavigationActivity(scheduleIdleReturn: false)
@@ -363,6 +371,7 @@ struct FocusRealityView: View {
         trackpadPanOrigin = nil
         trackpadPanMode = nil
         depthDragSession = nil
+        selectionGuard.endNavigation(at: ProcessInfo.processInfo.systemUptime)
         noteNavigationActivity()
     }
 
@@ -379,6 +388,7 @@ struct FocusRealityView: View {
         trackpadPanOrigin = nil
         trackpadPanMode = nil
         depthDragSession = nil
+        selectionGuard.endNavigation(at: ProcessInfo.processInfo.systemUptime)
         noteNavigationActivity()
     }
 
@@ -781,6 +791,31 @@ enum TrackpadPanMode: Equatable {
         guard max(horizontal, vertical) >= 3 else { return self }
         guard let candidateID, vertical > horizontal * 1.15 else { return .camera }
         return .branchDepth(candidateID)
+    }
+}
+
+struct CanvasSelectionGuard: Equatable {
+    static let navigationGraceInterval: TimeInterval = 0.35
+
+    private(set) var isNavigationActive = false
+    private(set) var lastNavigationEndedAt: TimeInterval?
+
+    mutating func beginNavigation() {
+        isNavigationActive = true
+    }
+
+    mutating func endNavigation(at timestamp: TimeInterval) {
+        isNavigationActive = false
+        lastNavigationEndedAt = timestamp
+    }
+
+    func permitsDeselection(
+        at timestamp: TimeInterval,
+        graceInterval: TimeInterval = navigationGraceInterval
+    ) -> Bool {
+        guard !isNavigationActive else { return false }
+        guard let lastNavigationEndedAt else { return true }
+        return timestamp - lastNavigationEndedAt >= graceInterval
     }
 }
 

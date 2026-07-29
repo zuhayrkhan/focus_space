@@ -883,6 +883,36 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertEqual(TrackpadMagnificationBridge.scaleFactor(for: -9), 0.25)
     }
 
+    func testCanvasSelectionGuardDoesNotTreatTrackpadNavigationAsDeselection() {
+        var guardState = CanvasSelectionGuard()
+
+        XCTAssertTrue(guardState.permitsDeselection(at: 10))
+
+        guardState.beginNavigation()
+        XCTAssertFalse(guardState.permitsDeselection(at: 10.5))
+
+        guardState.endNavigation(at: 11)
+        XCTAssertFalse(guardState.permitsDeselection(at: 11.34))
+        XCTAssertTrue(guardState.permitsDeselection(at: 11.36))
+    }
+
+    @MainActor
+    func testZoomingOutPreservesLargeMapSelectionAndInspectorContext() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let store = FocusSpaceStore(
+            repository: JSONFocusMapRepository(fileURL: folder.appending(path: "map.json"))
+        )
+        store.preview(.largeMap)
+        let root = try XCTUnwrap(store.map.nodes.first(where: { $0.parentID == nil }))
+        store.select(root.id)
+
+        store.zoomCamera(by: 0.6)
+
+        XCTAssertEqual(store.selection, root.id)
+        XCTAssertEqual(store.selectedNode?.id, root.id)
+        XCTAssertEqual(store.cameraIntent.mode, .free)
+    }
+
     @MainActor
     func testTrackpadMagnificationMonitorsTheNativeEventStreamForItsWindow() {
         let window = NSWindow(
