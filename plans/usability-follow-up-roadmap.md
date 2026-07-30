@@ -1,6 +1,6 @@
 # Focus Space usability follow-up roadmap
 
-Status: U1 and U2 completed on 21 July 2026; U3 implemented on 22 July 2026; U4 completed on 29 July 2026; U5 implementation and measured release gate completed on 29 July 2026, with final physical-trackpad acceptance pending
+Status: U1 and U2 completed on 21 July 2026; U3 implemented on 22 July 2026; U4 completed on 29 July 2026; U5 completed and accepted on 30 July 2026
 
 Scope: usability refinement only. Preserve the accepted bilateral arrangement, semantic colours, shapes, relationship curves, selection haze, and Z-as-attention model.
 
@@ -157,7 +157,7 @@ Definition of done:
 
 Priority: continuous, completed after U3 and U4.
 
-Completion: native signposts and JSON summaries now separate launch, model, renderer, relationship, accessibility, Arrange, search, and Option-drag costs. The signed-app matrix covers 32, 65, and 180 thoughts at three real content sizes and enforces target-Mac budgets. Large maps context-limit the spatial accessibility surface while exposing a complete searchable list. See [the U5 report and tactile acceptance checklist](../docs/usability-milestone-u5.md).
+Completion: accepted on 30 July 2026. Native signposts and JSON summaries separate launch, model, renderer, relationship, accessibility, Arrange, search, and Option-drag costs. The signed-app matrix covers 32, 65, and 180 thoughts at three real content sizes and enforces target-Mac budgets. Large maps context-limit the spatial accessibility surface while exposing a complete searchable list. The owner's physical-trackpad review accepted pinch zoom, two-finger camera and branch movement, Option-drag, selection framing, and canonical recovery. See [the U5 report and tactile acceptance checklist](../docs/usability-milestone-u5.md).
 
 - Add signposts for launch-to-interactive, snapshot derivation, renderer reconciliation, relationship reconciliation, accessibility representation, Arrange, search framing, and Option-drag preview.
 - Separate rendered performance from accessibility-tree construction in measurements.

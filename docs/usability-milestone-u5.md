@@ -1,6 +1,6 @@
 # Usability milestone U5 — measured scale and interaction feel
 
-Status: implementation and measured release gate complete on 29 July 2026; final physical-trackpad acceptance remains a short hands-on check.
+Status: completed and accepted on 30 July 2026.
 
 U5 turns the provisional scale expectations from the usability review into repeatable measurements on the target Mac. RealityKit work and accessibility projection are measured independently, and the large spatial workspace no longer publishes hundreds of off-context accessibility elements on every update.
 
@@ -31,19 +31,19 @@ The command packages and ad-hoc signs the exact app, then exercises the 32-, 65-
 
 The compact window resolves to `980 × 702` on this build because the native toolbar and supported minimum workspace height take precedence over the requested `980 × 650`. Standard and large resolve exactly to `1240 × 780` and `1260 × 820`.
 
-Baseline captured on 29 July 2026:
+Final regression matrix captured on 30 July 2026 from commit `68d3f47`:
 
 | Fixture | Size | Interactive | Presentation | Live preview | Search | Arrange | Spatial accessibility |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 32 | compact | 760 ms | 60.0 fps | 57.2 fps | 0.23 ms | 0.96 ms | 32 |
-| 32 | standard | 690 ms | 59.3 fps | 57.9 fps | 0.20 ms | 0.56 ms | 32 |
-| 32 | large | 737 ms | 59.7 fps | 55.9 fps | 0.25 ms | 0.68 ms | 32 |
-| 65 | compact | 638 ms | 58.7 fps | 57.7 fps | 0.63 ms | 9.54 ms | 5 of 65 |
-| 65 | standard | 637 ms | 59.0 fps | 56.6 fps | 0.36 ms | 7.86 ms | 5 of 65 |
-| 65 | large | 643 ms | 58.7 fps | 61.3 fps | 0.37 ms | 8.38 ms | 5 of 65 |
-| 180 | compact | 934 ms | 55.7 fps | 54.5 fps | 0.59 ms | 20.88 ms | 18 of 180 |
-| 180 | standard | 931 ms | 55.1 fps | 58.4 fps | 0.59 ms | 17.42 ms | 18 of 180 |
-| 180 | large | 936 ms | 56.0 fps | 56.5 fps | 0.57 ms | 22.85 ms | 18 of 180 |
+| 32 | compact | 921 ms | 59.7 fps | 58.6 fps | 0.15 ms | 0.47 ms | 32 |
+| 32 | standard | 893 ms | 59.3 fps | 58.2 fps | 0.28 ms | 0.89 ms | 32 |
+| 32 | large | 855 ms | 59.3 fps | 55.6 fps | 0.35 ms | 0.96 ms | 32 |
+| 65 | compact | 790 ms | 60.0 fps | 52.7 fps | 0.39 ms | 8.31 ms | 5 of 65 |
+| 65 | standard | 797 ms | 59.7 fps | 58.9 fps | 0.35 ms | 6.70 ms | 5 of 65 |
+| 65 | large | 792 ms | 59.3 fps | 61.4 fps | 0.35 ms | 7.13 ms | 5 of 65 |
+| 180 | compact | 960 ms | 57.8 fps | 56.1 fps | 0.60 ms | 20.98 ms | 18 of 180 |
+| 180 | standard | 1,020 ms | 58.4 fps | 51.0 fps | 0.32 ms | 15.29 ms | 18 of 180 |
+| 180 | large | 1,009 ms | 58.7 fps | 57.8 fps | 0.59 ms | 19.44 ms | 18 of 180 |
 
 The confirmed target-Mac gates are:
 
@@ -75,9 +75,19 @@ The ad-hoc signed `.build/Focus Space.app` was exercised directly:
 
 Automated tests also cover the native magnification monitor, stable magnification origin, two-finger camera-pan origin, two-finger branch-depth lock, selection framing, connected-component translation, renderer preview, and camera reset.
 
-## Final physical-trackpad checklist
+## Physical-trackpad acceptance
 
-Run this once against the packaged app before calling the tactile feel accepted:
+The owner exercised the packaged application on physical trackpads throughout the interaction review and accepted the final behaviour on 30 July 2026. The closing regression used **Large map (180 thoughts)** and selected **Focus item 7**:
+
+- two-finger movement retained the selected branch, selection, inspector context, and camera angle
+- pinch and stretch retained that same branch even after zooming beyond the former Atlas distance threshold
+- zooming could still return to the complete visible branch without becoming a deselection gesture
+- two-finger branch-depth movement remained continuous and committed as one undoable change
+- Option-drag retained continuous connected-component preview and one-step Undo
+- selecting successive ancestors and descendants framed their families without changing attention
+- `Command-0` restored the canonical whole-map context
+
+The repeatable checklist remains:
 
 1. On **Dense map**, pinch and stretch slowly, then quickly. The camera must track continuously in both directions and must be able to return to the full map.
 2. With no thought selected, drag with two fingers left/right and up/down. The universe must follow the fingers without changing thought attention.
@@ -87,4 +97,6 @@ Run this once against the packaged app before calling the tactile feel accepted:
 6. Press `Command-0`. The canonical Atlas or whole-map view must return.
 7. Repeat steps 1–6 on **Large map (180 thoughts)** and note any visible stall, dropped preview, or motion that feels detached.
 
-The automated diagnostic exceeds 30 fps in every matrix cell, but it cannot judge physical resistance, gesture direction, or subjective spring feel. A short small-map and large-map recording should accompany that final hands-on pass. QuickTime screen recording was unavailable in the automated session, so those two recordings are intentionally not represented by still screenshots.
+The automated diagnostic exceeds 30 fps in every matrix cell, while the owner's physical pass supplies the resistance, direction, continuity, and spring-feel judgement that automation cannot. No screen recording was retained; acceptance came from the live owner review rather than an automated substitute.
+
+The final release gate then passed all 91 tests, rebuilt the packaged application, validated its property list, and verified its ad-hoc signature.
