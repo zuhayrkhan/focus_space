@@ -992,6 +992,27 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertNotEqual(store.workspacePresentationLevel, .atlas)
     }
 
+    @MainActor
+    func testZoomOutKeepsALargeMapInsideItsSelectedBranch() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let store = FocusSpaceStore(
+            repository: JSONFocusMapRepository(fileURL: folder.appending(path: "map.json"))
+        )
+        store.preview(.largeMap)
+        let root = try XCTUnwrap(store.map.nodes.first(where: { $0.parentID == nil }))
+        store.select(root.id)
+        let framedPose = store.cameraIntent.pose
+
+        store.zoomCamera(by: 0.4, from: framedPose)
+
+        XCTAssertEqual(store.selection, root.id)
+        XCTAssertEqual(store.cameraIntent.mode, .framed(root.id))
+        XCTAssertGreaterThanOrEqual(store.cameraIntent.pose.distance, 17)
+        XCTAssertEqual(store.workspacePresentationLevel, .branch)
+        XCTAssertEqual(store.viewContextTitle, "Branch · \(root.title)")
+        XCTAssertEqual(store.viewContextReturnTitle, "Previous view")
+    }
+
     func testTrackpadPanLocksVerticalNodeGesturesToBranchDepth() {
         let nodeID = UUID()
 

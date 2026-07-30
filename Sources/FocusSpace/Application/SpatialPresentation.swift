@@ -173,7 +173,8 @@ struct SpatialPresentation: Equatable, Sendable {
         if nodeCount >= 120 && !isFocused {
             return .atlas
         }
-        if nodeCount >= 48,
+        if !isFocused,
+           nodeCount >= 48,
            islandCount > 1,
            cameraIntent.mode == .overview || cameraIntent.pose.distance >= 17 {
             return .atlas
