@@ -122,8 +122,10 @@ struct TrackpadMagnificationBridge: NSViewRepresentable {
             eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.magnify, .scrollWheel]) { [weak self] event in
                 guard let self else { return event }
                 switch event.type {
-                case .magnify:
-                    handleMagnification(event)
+                case .magnify where handleMagnification(event):
+                    // The bridge owns an in-canvas pinch. Forwarding it lets the
+                    // RealityView's empty-space tap also complete on finger-up.
+                    return nil
                 case .scrollWheel where handlePan(event):
                     return nil
                 default:
@@ -143,18 +145,20 @@ struct TrackpadMagnificationBridge: NSViewRepresentable {
             isPanActive = false
         }
 
-        private func handleMagnification(_ event: NSEvent) {
+        private func handleMagnification(_ event: NSEvent) -> Bool {
             guard let attachmentView,
                   event.window === hostWindow,
-                  attachmentView.bounds.contains(attachmentView.convert(event.locationInWindow, from: nil)) else { return }
+                  attachmentView.bounds.contains(
+                    attachmentView.convert(event.locationInWindow, from: nil)
+                  ) else { return false }
 
-            if event.phase.contains(.mayBegin) { return }
+            if event.phase.contains(.mayBegin) { return true }
 
             if event.phase.contains(.cancelled) {
                 if isMagnificationActive { onCancelled() }
                 accumulatedMagnification = 0
                 isMagnificationActive = false
-                return
+                return true
             }
 
             if event.phase.contains(.began) || !isMagnificationActive {
@@ -172,6 +176,7 @@ struct TrackpadMagnificationBridge: NSViewRepresentable {
             } else {
                 onChanged(factor)
             }
+            return true
         }
 
         private func handlePan(_ event: NSEvent) -> Bool {

@@ -901,19 +901,19 @@ final class ExperienceFoundationTests: XCTestCase {
     }
 
     @MainActor
-    func testZoomingOutPreservesLargeMapSelectionAndInspectorContext() throws {
+    func testZoomingOutPreservesLargeMapDescendantSelectionAndInspectorContext() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         let store = FocusSpaceStore(
             repository: JSONFocusMapRepository(fileURL: folder.appending(path: "map.json"))
         )
         store.preview(.largeMap)
-        let root = try XCTUnwrap(store.map.nodes.first(where: { $0.parentID == nil }))
-        store.select(root.id)
+        let descendant = try XCTUnwrap(store.map.nodes.first(where: { $0.parentID != nil }))
+        store.select(descendant.id)
 
         store.zoomCamera(by: 0.6)
 
-        XCTAssertEqual(store.selection, root.id)
-        XCTAssertEqual(store.selectedNode?.id, root.id)
+        XCTAssertEqual(store.selection, descendant.id)
+        XCTAssertEqual(store.selectedNode?.id, descendant.id)
         XCTAssertEqual(store.cameraIntent.mode, .free)
     }
 

@@ -483,6 +483,7 @@ struct FocusRealityView: View {
                 noteNavigationActivity()
             }
             .labelStyle(.iconOnly)
+            .buttonStyle(NavigationControlButtonStyle(onPressChanged: navigationControlPressChanged))
             .focusHelp("Zoom out; you can also pinch", shortcut: "⌘−")
             Button("Zoom in", systemImage: "plus.magnifyingglass") {
                 selectionGuard.suppressDeselection(at: ProcessInfo.processInfo.systemUptime)
@@ -490,6 +491,7 @@ struct FocusRealityView: View {
                 noteNavigationActivity()
             }
             .labelStyle(.iconOnly)
+            .buttonStyle(NavigationControlButtonStyle(onPressChanged: navigationControlPressChanged))
             .focusHelp("Zoom in; you can also stretch", shortcut: "⌘+")
             Button("Frame branch", systemImage: "viewfinder") {
                 selectionGuard.suppressDeselection(at: ProcessInfo.processInfo.systemUptime)
@@ -497,6 +499,7 @@ struct FocusRealityView: View {
                 noteNavigationActivity(scheduleIdleReturn: false)
             }
             .labelStyle(.iconOnly)
+            .buttonStyle(NavigationControlButtonStyle(onPressChanged: navigationControlPressChanged))
             .disabled(!store.canFrameSelection)
             .focusHelp("Frame the selected thought and its descendants")
             Button("Reset to canonical universe", systemImage: "arrow.counterclockwise") {
@@ -505,6 +508,7 @@ struct FocusRealityView: View {
                 noteNavigationActivity(scheduleIdleReturn: false)
             }
             .labelStyle(.iconOnly)
+            .buttonStyle(NavigationControlButtonStyle(onPressChanged: navigationControlPressChanged))
             .focusHelp("Reset to the canonical universe view", shortcut: "⌘0")
         }
         .padding(.horizontal, 9)
@@ -515,22 +519,19 @@ struct FocusRealityView: View {
         .padding(.bottom, 12)
         .allowsHitTesting(controlsVisible && !workspaceChromeHidden)
         .accessibilityHidden(!controlsVisible || workspaceChromeHidden)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    if !selectionGuard.isNavigationActive {
-                        selectionGuard.beginNavigation()
-                    }
-                }
-                .onEnded { _ in
-                    selectionGuard.endNavigation(at: ProcessInfo.processInfo.systemUptime)
-                }
-        )
         .onHover { hovering in
             if hovering { controlsVisible = true; controlsTask?.cancel() }
             else { noteNavigationActivity() }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: controlsVisible)
+    }
+
+    private func navigationControlPressChanged(_ isPressed: Bool) {
+        if isPressed {
+            selectionGuard.beginNavigation()
+        } else if selectionGuard.isNavigationActive {
+            selectionGuard.endNavigation(at: ProcessInfo.processInfo.systemUptime)
+        }
     }
 
     @ViewBuilder
@@ -835,6 +836,26 @@ struct CanvasSelectionGuard: Equatable {
         guard !isNavigationActive else { return false }
         guard let lastNavigationEndedAt else { return true }
         return timestamp - lastNavigationEndedAt >= graceInterval
+    }
+}
+
+private struct NavigationControlButtonStyle: ButtonStyle {
+    let onPressChanged: (Bool) -> Void
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(width: 28, height: 28)
+            .contentShape(.rect)
+            .foregroundStyle(configuration.isPressed ? .secondary : .primary)
+            .background(
+                .white.opacity(configuration.isPressed ? 0.10 : 0),
+                in: .circle
+            )
+            .onChange(of: configuration.isPressed) { _, isPressed in
+                // Claim mouse-down before the canvas can interpret the matching
+                // mouse-up as an empty-space click.
+                onPressChanged(isPressed)
+            }
     }
 }
 
