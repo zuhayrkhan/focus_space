@@ -478,18 +478,21 @@ struct FocusRealityView: View {
                 .focusHelp("Drag to orbit; two-finger drag to pan, or move vertically over a thought to shift its branch in depth")
             Divider().frame(height: 22)
             Button("Zoom out", systemImage: "minus.magnifyingglass") {
+                selectionGuard.suppressDeselection(at: ProcessInfo.processInfo.systemUptime)
                 store.zoomCamera(by: 0.84, animated: true)
                 noteNavigationActivity()
             }
             .labelStyle(.iconOnly)
             .focusHelp("Zoom out; you can also pinch", shortcut: "⌘−")
             Button("Zoom in", systemImage: "plus.magnifyingglass") {
+                selectionGuard.suppressDeselection(at: ProcessInfo.processInfo.systemUptime)
                 store.zoomCamera(by: 1.18, animated: true)
                 noteNavigationActivity()
             }
             .labelStyle(.iconOnly)
             .focusHelp("Zoom in; you can also stretch", shortcut: "⌘+")
             Button("Frame branch", systemImage: "viewfinder") {
+                selectionGuard.suppressDeselection(at: ProcessInfo.processInfo.systemUptime)
                 store.frameSelection()
                 noteNavigationActivity(scheduleIdleReturn: false)
             }
@@ -497,6 +500,7 @@ struct FocusRealityView: View {
             .disabled(!store.canFrameSelection)
             .focusHelp("Frame the selected thought and its descendants")
             Button("Reset to canonical universe", systemImage: "arrow.counterclockwise") {
+                selectionGuard.suppressDeselection(at: ProcessInfo.processInfo.systemUptime)
                 store.resetCamera()
                 noteNavigationActivity(scheduleIdleReturn: false)
             }
@@ -511,6 +515,17 @@ struct FocusRealityView: View {
         .padding(.bottom, 12)
         .allowsHitTesting(controlsVisible && !workspaceChromeHidden)
         .accessibilityHidden(!controlsVisible || workspaceChromeHidden)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !selectionGuard.isNavigationActive {
+                        selectionGuard.beginNavigation()
+                    }
+                }
+                .onEnded { _ in
+                    selectionGuard.endNavigation(at: ProcessInfo.processInfo.systemUptime)
+                }
+        )
         .onHover { hovering in
             if hovering { controlsVisible = true; controlsTask?.cancel() }
             else { noteNavigationActivity() }
@@ -795,7 +810,7 @@ enum TrackpadPanMode: Equatable {
 }
 
 struct CanvasSelectionGuard: Equatable {
-    static let navigationGraceInterval: TimeInterval = 0.35
+    static let navigationGraceInterval: TimeInterval = 0.8
 
     private(set) var isNavigationActive = false
     private(set) var lastNavigationEndedAt: TimeInterval?
@@ -806,6 +821,10 @@ struct CanvasSelectionGuard: Equatable {
 
     mutating func endNavigation(at timestamp: TimeInterval) {
         isNavigationActive = false
+        lastNavigationEndedAt = timestamp
+    }
+
+    mutating func suppressDeselection(at timestamp: TimeInterval) {
         lastNavigationEndedAt = timestamp
     }
 

@@ -892,8 +892,12 @@ final class ExperienceFoundationTests: XCTestCase {
         XCTAssertFalse(guardState.permitsDeselection(at: 10.5))
 
         guardState.endNavigation(at: 11)
-        XCTAssertFalse(guardState.permitsDeselection(at: 11.34))
-        XCTAssertTrue(guardState.permitsDeselection(at: 11.36))
+        XCTAssertFalse(guardState.permitsDeselection(at: 11.79))
+        XCTAssertTrue(guardState.permitsDeselection(at: 11.81))
+
+        guardState.suppressDeselection(at: 20)
+        XCTAssertFalse(guardState.permitsDeselection(at: 20))
+        XCTAssertTrue(guardState.permitsDeselection(at: 20.81))
     }
 
     @MainActor
