@@ -223,10 +223,17 @@ final class FocusSpaceStore: ObservableObject {
     }
 
     func setCameraPose(_ pose: FocusCameraIntent.Pose, animated: Bool = false) {
-        navigationReturnIntent = nil
+        let nextMode: FocusCameraIntent.Mode
+        switch cameraIntent.mode {
+        case .framed, .search:
+            nextMode = cameraIntent.mode
+        case .canonical, .free, .overview:
+            nextMode = .free
+            navigationReturnIntent = nil
+        }
         cameraIntent = FocusCameraIntent(
             pose: pose.bounded(),
-            mode: .free,
+            mode: nextMode,
             revision: cameraIntent.revision + 1,
             isAnimated: animated
         )
